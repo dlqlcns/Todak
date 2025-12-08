@@ -8,9 +8,13 @@ import crypto from 'crypto';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+function isPlaceholder(value) {
+  return typeof value === 'string' && value.includes('${');
+}
+
 function parseDbUrl(urlString) {
   try {
-    if (!urlString) return null;
+    if (!urlString || isPlaceholder(urlString)) return null;
     const url = new URL(urlString);
     return {
       host: url.hostname,
@@ -26,12 +30,28 @@ function parseDbUrl(urlString) {
 }
 
 function resolveDbConfig() {
-  const parsed = parseDbUrl(process.env.MYSQL_URL || process.env.DATABASE_URL);
-  const host = process.env.MYSQLHOST || process.env.MYSQL_HOST || process.env.RAILWAY_TCP_PROXY_DOMAIN || process.env.RAILWAY_PRIVATE_DOMAIN;
-  const port = process.env.MYSQLPORT || process.env.MYSQL_PORT || process.env.RAILWAY_TCP_PROXY_PORT;
-  const user = process.env.MYSQLUSER || process.env.MYSQL_USER || 'root';
-  const password = process.env.MYSQLPASSWORD || process.env.MYSQL_PASSWORD || process.env.MYSQL_ROOT_PASSWORD;
-  const database = process.env.MYSQL_DATABASE || process.env.MYSQLDATABASE;
+  const parsed = parseDbUrl(process.env.MYSQL_URL || process.env.DATABASE_URL || process.env.MYSQL_PUBLIC_URL);
+  const host =
+    (!isPlaceholder(process.env.MYSQLHOST) && process.env.MYSQLHOST) ||
+    (!isPlaceholder(process.env.MYSQL_HOST) && process.env.MYSQL_HOST) ||
+    (!isPlaceholder(process.env.RAILWAY_TCP_PROXY_DOMAIN) && process.env.RAILWAY_TCP_PROXY_DOMAIN) ||
+    (!isPlaceholder(process.env.RAILWAY_PRIVATE_DOMAIN) && process.env.RAILWAY_PRIVATE_DOMAIN);
+  const port =
+    (!isPlaceholder(process.env.MYSQLPORT) && process.env.MYSQLPORT) ||
+    (!isPlaceholder(process.env.MYSQL_PORT) && process.env.MYSQL_PORT) ||
+    (!isPlaceholder(process.env.RAILWAY_TCP_PROXY_PORT) && process.env.RAILWAY_TCP_PROXY_PORT) ||
+    (!isPlaceholder(process.env.RAILWAY_PRIVATE_PORT) && process.env.RAILWAY_PRIVATE_PORT);
+  const user =
+    (!isPlaceholder(process.env.MYSQLUSER) && process.env.MYSQLUSER) ||
+    (!isPlaceholder(process.env.MYSQL_USER) && process.env.MYSQL_USER) ||
+    'root';
+  const password =
+    (!isPlaceholder(process.env.MYSQLPASSWORD) && process.env.MYSQLPASSWORD) ||
+    (!isPlaceholder(process.env.MYSQL_PASSWORD) && process.env.MYSQL_PASSWORD) ||
+    (!isPlaceholder(process.env.MYSQL_ROOT_PASSWORD) && process.env.MYSQL_ROOT_PASSWORD);
+  const database =
+    (!isPlaceholder(process.env.MYSQL_DATABASE) && process.env.MYSQL_DATABASE) ||
+    (!isPlaceholder(process.env.MYSQLDATABASE) && process.env.MYSQLDATABASE);
 
   return {
     host: parsed?.host || host || 'localhost',
@@ -59,6 +79,21 @@ function verifyPassword(password, storedHash) {
 
 const dbConfig = resolveDbConfig();
 const pool = mysql.createPool(dbConfig);
+
+async function testDbConnection() {
+  try {
+    const conn = await pool.getConnection();
+    await conn.ping();
+    console.log(
+      `✅ MySQL connected: ${conn.config.host}:${conn.config.port}${conn.config.database ? `/${conn.config.database}` : ''}`
+    );
+    conn.release();
+  } catch (err) {
+    console.error('❌ MySQL connection failed:', err);
+  }
+}
+
+testDbConnection();
 
 const app = express();
 app.use(cors());
