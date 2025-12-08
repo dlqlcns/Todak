@@ -3,13 +3,19 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { EmotionId, MoodRecord } from '../types';
 import { AI_EMPATHY_MESSAGES, EMOTIONS } from '../constants';
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const apiKey = import.meta.env.VITE_GOOGLE_GENAI_API_KEY;
+const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
 /**
  * Generates an empathy message using Gemini API.
  */
 export const generateEmpathyMessage = async (emotionIds: EmotionId[], userContent: string): Promise<string> => {
   try {
+    if (!ai) {
+      const primaryEmotionId = emotionIds[0];
+      return AI_EMPATHY_MESSAGES[primaryEmotionId] || AI_EMPATHY_MESSAGES.default;
+    }
+
     // Get all emotion labels
     const emotionLabels = emotionIds.map(id => {
         const e = EMOTIONS.find(emo => emo.id === id);
@@ -56,6 +62,13 @@ export const generateEmpathyMessage = async (emotionIds: EmotionId[], userConten
  */
 export const generateMediaRecommendations = async (emotionLabels: string, userContent: string): Promise<{ music: { searchQuery: string, title: string, reason: string }, video: { searchQuery: string, title: string, reason: string } }> => {
   try {
+    if (!ai) {
+      return {
+        music: { searchQuery: "healing piano music", title: "잔잔한 피아노 음악", reason: "마음을 편안하게 해줄 거예요." },
+        video: { searchQuery: "nature sounds relaxing", title: "자연의 소리", reason: "잠시 숲속으로 떠나보세요." }
+      };
+    }
+
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: `
@@ -110,6 +123,12 @@ export const generateMediaRecommendations = async (emotionLabels: string, userCo
 
 export const generateWeeklyReview = async (moods: MoodRecord[]): Promise<string> => {
     try {
+        if (!ai) {
+            return moods && moods.length > 0
+                ? "이번 주는 다양한 감정들이 함께했네요. 힘든 날도 있었지만, 행복한 순간들도 빛났던 한 주였습니다. 다음 주도 당신의 속도대로 나아가길 응원해요! 🌈"
+                : "이번 주는 아직 기록이 부족해요. 당신의 작은 감정들도 소중하니 다음 주에는 꼭 들려주세요. 😊";
+        }
+
         if (!moods || moods.length === 0) {
             return "이번 주는 아직 기록이 부족해요. 당신의 작은 감정들도 소중하니 다음 주에는 꼭 들려주세요. 😊";
         }
@@ -143,6 +162,12 @@ export const generateWeeklyReview = async (moods: MoodRecord[]): Promise<string>
 
 export const generateMonthlyReview = async (moods: MoodRecord[]): Promise<string> => {
     try {
+        if (!ai) {
+            return moods && moods.length > 0
+                ? "한 달 동안 정말 수고 많았어요. 다양한 감정의 파도 속에서도 자신을 잃지 않고 기록해준 당신이 멋져요. 다음 달도 당신의 색으로 가득 채워지길! ✨"
+                : "이번 달은 아직 기록이 충분하지 않아요. 하루하루 쌓이는 마음들이 당신을 더 단단하게 만들어줄 거예요. 🌙";
+        }
+
         if (!moods || moods.length === 0) {
             return "이번 달은 아직 기록이 충분하지 않아요. 하루하루 쌓이는 마음들이 당신을 더 단단하게 만들어줄 거예요. 🌙";
         }
