@@ -48,7 +48,12 @@ const LoginScreen: React.FC<{ onLogin: (id: string, password: string) => Promise
             await onSignup(id, password, nickname);
         }
     } catch (err: any) {
-        setError(err?.message || '요청을 처리할 수 없습니다.');
+        const message = err?.message;
+        if (typeof message === 'string' && message.toLowerCase().includes('failed to fetch')) {
+            setError('서버와 통신할 수 없습니다. 네트워크 상태를 확인하거나 잠시 후 다시 시도해주세요.');
+        } else {
+            setError(message || '요청을 처리할 수 없습니다.');
+        }
     } finally {
         setLoading(false);
     }
