@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>토닥(Todak) - 마음을 토닥이다</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              olive: {
+                DEFAULT: '#6B8A5A', // Stability, calm
+                light: '#8CAB7B',
+                dark: '#556E48',
+              },
+              softorange: '#F2A46D', // Warmth
+              warmbrown: '#7B5B3E', // Trust, natural
+              peach: '#F7D7C4', // Comfort
+              beige: '#F4F1EC', // Background
+              olivegray: '#D6D9D2', // Neutral
+              mint: '#BEE3CC', // Freshness
+              warmyellow: '#F6D880', // Energy
+            },
+            fontFamily: {
+              sans: ['Noto Sans KR', 'sans-serif'],
+            },
+            animation: {
+              'fadeIn': 'fadeIn 0.5s ease-out forwards',
+              'slideUp': 'slideUp 0.4s ease-out forwards',
+              'float': 'float 3s ease-in-out infinite',
+            },
+            keyframes: {
+              fadeIn: {
+                '0%': { opacity: '0' },
+                '100%': { opacity: '1' },
+              },
+              slideUp: {
+                '0%': { transform: 'translateY(20px)', opacity: '0' },
+                '100%': { transform: 'translateY(0)', opacity: '1' },
+              },
+              float: {
+                '0%, 100%': { transform: 'translateY(0)' },
+                '50%': { transform: 'translateY(-5px)' },
+              }
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      body {
+        font-family: 'Noto Sans KR', sans-serif;
+        background-color: #F4F1EC; /* beige */
+        color: #7B5B3E; /* warmbrown */
+        -webkit-font-smoothing: antialiased;
+      }
+      /* Hide scrollbar for clean UI in mobile frames */
+      .no-scrollbar::-webkit-scrollbar {
+        display: none;
+      }
+      .no-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+      /* Hide Recharts focus outline (black box) */
+      .recharts-wrapper *:focus {
+        outline: none !important;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.555.0",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "recharts": "https://aistudiocdn.com/recharts@^3.5.1",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
+    "date-fns/": "https://aistudiocdn.com/date-fns@^4.1.0/",
+    "date-fns": "https://aistudiocdn.com/date-fns@^4.1.0"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body>
+    <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>
