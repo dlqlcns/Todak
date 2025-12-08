@@ -20,14 +20,24 @@ let poolPromise;
 
 const getPool = async () => {
   if (!poolPromise) {
+    const mysqlUrl = process.env.MYSQL_URL;
+    if (!mysqlUrl) {
+      console.error('MYSQL_URL is not set. Database connections are disabled.');
+      return null;
+    }
+
     poolPromise = mysqlModule
       .then(mysql => {
         if (!mysql) {
           throw new Error('Missing mysql2 dependency');
         }
-        return mysql.createPool({
-          uri: process.env.MYSQL_URL,
+        const pool = mysql.createPool({
+          uri: mysqlUrl,
         });
+        if (pool && pool.__stub) {
+          throw new Error('mysql2 driver unavailable');
+        }
+        return pool;
       })
       .catch(error => {
         console.error('Failed to initialize MySQL client. Make sure mysql2 is installed and DB is reachable.', error);
