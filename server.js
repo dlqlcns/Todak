@@ -28,7 +28,11 @@ function parseDbUrl(urlString) {
 function resolveDbConfig() {
   const parsed = parseDbUrl(process.env.MYSQL_URL || process.env.DATABASE_URL);
   const host = process.env.MYSQLHOST || process.env.MYSQL_HOST || process.env.RAILWAY_TCP_PROXY_DOMAIN || process.env.RAILWAY_PRIVATE_DOMAIN;
-  const port = process.env.MYSQLPORT || process.env.MYSQL_PORT || process.env.RAILWAY_TCP_PROXY_PORT;
+  const port =
+    process.env.MYSQLPORT ||
+    process.env.MYSQL_PORT ||
+    process.env.RAILWAY_TCP_PROXY_PORT ||
+    process.env.RAILWAY_PRIVATE_PORT;
   const user = process.env.MYSQLUSER || process.env.MYSQL_USER || 'root';
   const password = process.env.MYSQLPASSWORD || process.env.MYSQL_PASSWORD || process.env.MYSQL_ROOT_PASSWORD;
   const database = process.env.MYSQL_DATABASE || process.env.MYSQLDATABASE;
