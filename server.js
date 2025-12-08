@@ -11,43 +11,38 @@ const __dirname = path.dirname(__filename);
 const distDir = path.resolve(__dirname, 'dist');
 const port = process.env.PORT || 4173;
 
-// Database bootstrap (lazy to keep server usable without deps during local dev)
 const mysqlModule = import('mysql2/promise').catch(error => {
   console.error('mysql2 is not available. Install dependencies to enable DB access.', error);
   return null;
 });
+
 let poolPromise;
 
 const getPool = async () => {
-  if (!poolPromise) {
-    const mysqlUrl =
-      process.env.MYSQL_URL ||
-      process.env.MYSQL_PUBLIC_URL ||
-      buildMysqlUriFromParts();
+  if (poolPromise) return poolPromise;
 
-    if (!mysqlUrl) {
-      console.error('MYSQL_URL is not set. Database connections are disabled.');
-      return null;
-    }
+  const mysqlUrl =
+    process.env.MYSQL_URL ||
+    process.env.MYSQL_PUBLIC_URL ||
+    buildMysqlUriFromParts();
 
-    poolPromise = mysqlModule
-      .then(mysql => {
-        if (!mysql) {
-          throw new Error('Missing mysql2 dependency');
-        }
-        const pool = mysql.createPool({
-          uri: mysqlUrl,
-        });
-        if (pool && pool.__stub) {
-          throw new Error('mysql2 driver unavailable');
-        }
-        return pool;
-      })
-      .catch(error => {
-        console.error('Failed to initialize MySQL client. Make sure mysql2 is installed and DB is reachable.', error);
-        throw error;
-      });
+  if (!mysqlUrl) {
+    console.error('MYSQL_URL is not set. Database connections are disabled.');
+    return null;
   }
+
+  poolPromise = mysqlModule
+    .then(mysql => {
+      if (!mysql) {
+        throw new Error('Missing mysql2 dependency');
+      }
+      return mysql.createPool({ uri: mysqlUrl });
+    })
+    .catch(error => {
+      console.error('Failed to initialize MySQL client. Make sure the mysql2 dependency is installed and DB is reachable.', error);
+      return null;
+    });
+
   return poolPromise;
 };
 
