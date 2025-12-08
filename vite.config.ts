@@ -12,6 +12,10 @@ export default defineConfig(({ mode }) => {
       host: '0.0.0.0',
     },
 
+    preview: {
+      allowedHosts: ['todak-production-3b85.up.railway.app'],
+    },
+
     plugins: [react()],
 
     define: {
