@@ -26,3 +26,4 @@ View your app in AI Studio: https://ai.studio/apps/drive/11UruRzyeqOz8IC17V0azoJ
   - `GEMINI_API_KEY`
   - `MYSQL_URL` (use the provided `${MySQL.MYSQL_URL}` from Railway's built-in MySQL service)
 - Apply the schema in [`db/schema.sql`](db/schema.sql) to initialize the external MySQL database.
+- The `npm start` precheck warns if `MYSQL_URL` is missing so you can set it before deploying; without it, database connections will stay disabled.
