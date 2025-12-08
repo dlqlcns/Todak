@@ -3,7 +3,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { EmotionId, MoodRecord } from '../types';
 import { AI_EMPATHY_MESSAGES, EMOTIONS } from '../constants';
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
 
 /**
  * Generates an empathy message using Gemini API.
