@@ -924,6 +924,26 @@ const ProfileScreen: React.FC<{
     
     const filteredCount = filteredMoods.length;
 
+    const currentStreak = useMemo(() => {
+        const recordedDates = new Set(Object.keys(moods));
+        if (recordedDates.size === 0) return 0;
+
+        let streak = 0;
+        let cursor = new Date();
+
+        while (true) {
+            const key = format(cursor, 'yyyy-MM-dd');
+            if (recordedDates.has(key)) {
+                streak += 1;
+                cursor = subDays(cursor, 1);
+            } else {
+                break;
+            }
+        }
+
+        return streak;
+    }, [moods]);
+
     // Calculate all emotion counts based on FILTERED moods
     const emoCounts = filteredMoods.reduce((acc: Record<string, number>, curr: MoodRecord) => {
         curr.emotionIds.forEach(id => {
@@ -962,7 +982,7 @@ const ProfileScreen: React.FC<{
                         </div>
                     </div>
                     <div className="bg-white p-5 rounded-[24px] text-center shadow-sm border border-olivegray/10 flex flex-col justify-center">
-                        <div className="text-2xl font-bold text-softorange">3</div>
+                        <div className="text-2xl font-bold text-softorange">{currentStreak}</div>
                         <div className="text-[11px] text-warmbrown/50 mt-1 font-medium">연속 기록 🔥</div>
                     </div>
                 </div>
