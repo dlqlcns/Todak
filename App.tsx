@@ -4,7 +4,7 @@ import { EMOTIONS, AI_EMPATHY_MESSAGES } from './constants';
 import { generateEmpathyMessage, generateWeeklyReview, generateMonthlyReview, generateMediaRecommendations } from './services/aiService';
 import { Card, Button, BottomNav, Header, ModalWrapper } from './components/Components';
 import { CalendarModal } from './components/CalendarModal';
-import { login, signup, fetchMoods, saveMood, deleteMood } from './services/api';
+import { login, signup, fetchMoods, saveMood, deleteMood, fetchReminder, saveReminder } from './services/api';
 import { 
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, 
   PieChart, Pie, LabelList
@@ -860,10 +860,64 @@ const ReportScreen: React.FC<{
 };
 
 // 7. Notification Screen
-const NotificationScreen: React.FC<{ 
-    onLogout: () => void; 
+const NotificationScreen: React.FC<{
+    userId: number;
+    onLogout: () => void;
     onBack: () => void;
-}> = ({ onLogout, onBack }) => {
+}> = ({ userId, onLogout, onBack }) => {
+    const [reminderTime, setReminderTime] = useState('22:00');
+    const [statusMessage, setStatusMessage] = useState('');
+    const [error, setError] = useState('');
+    const [isSaving, setIsSaving] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        let mounted = true;
+        const loadReminder = async () => {
+            try {
+                const savedTime = await fetchReminder(userId);
+                if (mounted && savedTime) {
+                    setReminderTime(savedTime.slice(0, 5));
+                }
+            } catch (err) {
+                console.error(err);
+                if (mounted) {
+                    setError('알림 설정을 불러오지 못했어요.');
+                }
+            } finally {
+                if (mounted) {
+                    setIsLoading(false);
+                }
+            }
+        };
+
+        loadReminder();
+        return () => {
+            mounted = false;
+        };
+    }, [userId]);
+
+    const handleSave = async () => {
+        if (!reminderTime) {
+            setError('알림 시간을 선택해주세요.');
+            return;
+        }
+
+        setIsSaving(true);
+        setError('');
+        setStatusMessage('');
+        try {
+            const saved = await saveReminder(userId, reminderTime);
+            setReminderTime(saved);
+            setStatusMessage('알림 설정이 완료되었어요.');
+        } catch (err) {
+            console.error(err);
+            setError('알림 설정 저장에 실패했어요.');
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
     return (
         <div className="pb-28">
             <Header title="알림 설정" onLogout={onLogout} onBack={onBack} />
@@ -872,12 +926,22 @@ const NotificationScreen: React.FC<{
                     <div>
                         <h3 className="font-bold text-warmbrown mb-3">매일 마음 기록 알림</h3>
                         <div className="flex gap-3">
-                            <input type="time" defaultValue="22:00" className="flex-1 p-4 bg-beige rounded-2xl border-none font-mono text-lg text-warmbrown" />
-                            <Button className="px-6">저장</Button>
+                            <input
+                                type="time"
+                                value={reminderTime}
+                                disabled={isLoading}
+                                onChange={(e) => setReminderTime(e.target.value)}
+                                className="flex-1 p-4 bg-beige rounded-2xl border-none font-mono text-lg text-warmbrown"
+                            />
+                            <Button className="px-6" onClick={handleSave} disabled={isSaving || isLoading}>
+                                {isSaving ? '저장 중...' : '저장'}
+                            </Button>
                         </div>
                         <p className="text-xs text-warmbrown/50 mt-3 pl-1">설정한 시간에 다정한 알림을 보내드릴게요.</p>
+                        {statusMessage && <p className="text-sm text-olive mt-2 font-semibold">{statusMessage}</p>}
+                        {error && <p className="text-sm text-softorange mt-2">{error}</p>}
                     </div>
-                    
+
                     <div className="pt-6 border-t border-olivegray/10">
                         <h4 className="text-sm font-bold text-warmbrown/80 mb-4">알림 메시지 미리보기</h4>
                         <div className="space-y-3">
@@ -1239,7 +1303,7 @@ const App: React.FC = () => {
             />
         );
       case 'notification':
-        return <NotificationScreen onLogout={handleLogout} onBack={handleBack} />;
+        return <NotificationScreen userId={user.id} onLogout={handleLogout} onBack={handleBack} />;
       case 'profile':
         return (
             <ProfileScreen 

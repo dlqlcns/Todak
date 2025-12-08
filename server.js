@@ -357,6 +357,81 @@ app.delete('/api/moods/:id', async (req, res) => {
   }
 });
 
+app.get('/api/reminder', async (req, res) => {
+  const userId = Number(req.query.userId);
+  if (!userId) {
+    return res.status(400).send('userId가 필요합니다.');
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('user_reminders')
+      .select('reminder_time')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+
+    const reminderTime = data?.reminder_time ? String(data.reminder_time).slice(0, 5) : null;
+    res.json({ reminderTime });
+  } catch (err) {
+    console.error('Fetch reminder error:', err);
+    res.status(500).send('알림 설정을 불러오지 못했어요.');
+  }
+});
+
+app.post('/api/reminder', async (req, res) => {
+  const { userId, reminderTime } = req.body || {};
+  if (!userId || !reminderTime) {
+    return res.status(400).send('userId와 reminderTime이 필요합니다.');
+  }
+
+  const normalizedTime = reminderTime.length === 5 ? `${reminderTime}:00` : reminderTime;
+
+  try {
+    const now = new Date();
+
+    const { data: existing, error: existingError } = await supabase
+      .from('user_reminders')
+      .select('user_id')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (existingError) {
+      throw existingError;
+    }
+
+    if (existing) {
+      const { error: updateError } = await supabase
+        .from('user_reminders')
+        .update({ reminder_time: normalizedTime, updated_at: now })
+        .eq('user_id', userId);
+
+      if (updateError) {
+        throw updateError;
+      }
+    } else {
+      const { error: insertError } = await supabase.from('user_reminders').insert({
+        user_id: userId,
+        reminder_time: normalizedTime,
+        created_at: now,
+        updated_at: now,
+      });
+
+      if (insertError) {
+        throw insertError;
+      }
+    }
+
+    res.json({ reminderTime: reminderTime.slice(0, 5) });
+  } catch (err) {
+    console.error('Save reminder error:', err);
+    res.status(500).send('알림 설정 저장에 실패했어요.');
+  }
+});
+
 app.get('/api/health', async (_req, res) => {
   try {
     const { error } = await supabase.from('users').select('id').limit(1);
