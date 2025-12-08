@@ -27,9 +27,14 @@ if (!MYSQL_URL && password && privateHost) {
 }
 
 if (!process.env.MYSQL_URL) {
-  console.warn(
-    "MYSQL_URL is not set. Database connections are disabled. Provide ${MySQL.MYSQL_URL} (Railway) or a manual connection string in your environment."
+  console.error(
+    [
+      'MYSQL_URL is not set and could not be derived. Database connections will fail.',
+      'Provide ${MySQL.MYSQL_URL} in Railway or set a manual connection string (e.g. mysql://user:pass@host:3306/db).',
+      'Hint: Railway exposes MYSQL_ROOT_PASSWORD, MYSQLUSER, RAILWAY_PRIVATE_DOMAIN, and MYSQL_DATABASE for you to compose the URL.',
+    ].join('\n')
   );
+  process.exit(1);
 }
 
 if (!MYSQL_PUBLIC_URL && password && publicHost && publicPort) {

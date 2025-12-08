@@ -39,4 +39,4 @@ View your app in AI Studio: https://ai.studio/apps/drive/11UruRzyeqOz8IC17V0azoJ
   MYSQLUSER="root"
   ```
 - Apply the schema in [`db/schema.sql`](db/schema.sql) to initialize the external MySQL database.
-- The `npm start` precheck will warn only when it cannot derive or find a MySQL connection string; otherwise it will surface the derived connection values before starting.
+- The `npm start` precheck now fails fast when it cannot derive or find a MySQL connection string, preventing the app from starting without a live database URL.
