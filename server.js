@@ -20,7 +20,11 @@ let poolPromise;
 
 const getPool = async () => {
   if (!poolPromise) {
-    const mysqlUrl = process.env.MYSQL_URL;
+    const mysqlUrl =
+      process.env.MYSQL_URL ||
+      process.env.MYSQL_PUBLIC_URL ||
+      buildMysqlUriFromParts();
+
     if (!mysqlUrl) {
       console.error('MYSQL_URL is not set. Database connections are disabled.');
       return null;
@@ -46,6 +50,26 @@ const getPool = async () => {
   }
   return poolPromise;
 };
+
+function buildMysqlUriFromParts() {
+  const user = process.env.MYSQLUSER || process.env.DB_USER || 'root';
+  const password = process.env.MYSQL_ROOT_PASSWORD || process.env.MYSQLPASSWORD;
+  const host =
+    process.env.RAILWAY_PRIVATE_DOMAIN ||
+    process.env.MYSQLHOST ||
+    process.env.DB_HOST;
+  const port = process.env.MYSQLPORT || process.env.DB_PORT || '3306';
+  const database =
+    process.env.MYSQL_DATABASE ||
+    process.env.MYSQLDATABASE ||
+    process.env.DB_NAME;
+
+  if (!host || !password || !database) {
+    return '';
+  }
+
+  return `mysql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${database}`;
+}
 
 const mimeTypes = {
   '.html': 'text/html',
