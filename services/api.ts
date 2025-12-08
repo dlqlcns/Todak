@@ -1,6 +1,7 @@
 import { EmotionId, MoodRecord, User } from "../types";
 
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const DEFAULT_API_BASE = "https://todak-production-3b85.up.railway.app";
+const API_BASE = (import.meta.env.VITE_API_URL || DEFAULT_API_BASE).replace(/\/$/, "");
 
 interface AuthResponse extends User {
   hasSeenGuide?: boolean;
