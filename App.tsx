@@ -16,7 +16,7 @@ import { ko } from 'date-fns/locale';
 // --- Screens ---
 
 // 1. Onboarding / Login (Updated with Landing -> Login/Signup Flow)
-const LoginScreen: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
+const LoginScreen: React.FC<{ onLogin: (user: User, isNew: boolean) => void }> = ({ onLogin }) => {
   const [view, setView] = useState<'landing' | 'login' | 'signup'>('landing');
   const [formData, setFormData] = useState({ id: '', password: '', nickname: '' });
   const [error, setError] = useState('');
@@ -39,14 +39,14 @@ const LoginScreen: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
         setIsSubmitting(true);
         if (view === 'login') {
             const loggedIn = await login(id, password);
-            onLogin(loggedIn);
+            onLogin(loggedIn, false);
         } else {
             if (!nickname) {
                 setError('닉네임을 입력해주세요.');
                 return;
             }
             const newUser = await signup(id, password, nickname);
-            onLogin(newUser);
+            onLogin(newUser, true);
         }
     } catch (e: any) {
         setError(e?.message || '로그인 처리 중 오류가 발생했어요.');
@@ -1118,10 +1118,10 @@ const App: React.FC = () => {
       }
   }, [user, showOnboarding]);
 
-  const handleLogin = (userObj: User) => {
+  const handleLogin = (userObj: User, isNew: boolean) => {
     setUser(userObj);
     localStorage.setItem('todak_current_user', JSON.stringify(userObj));
-    setShowOnboarding(true);
+    setShowOnboarding(isNew);
   };
 
   const handleFinishOnboarding = () => {
