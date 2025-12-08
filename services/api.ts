@@ -58,3 +58,16 @@ export async function saveMood(
 export async function deleteMood(recordId: number): Promise<void> {
   await request<void>(`/api/moods/${recordId}`, { method: 'DELETE' });
 }
+
+export async function fetchReminder(userId: number): Promise<string | null> {
+  const { reminderTime } = await request<{ reminderTime: string | null }>(`/api/reminder?userId=${userId}`);
+  return reminderTime;
+}
+
+export async function saveReminder(userId: number, reminderTime: string): Promise<string> {
+  const { reminderTime: savedTime } = await request<{ reminderTime: string }>('/api/reminder', {
+    method: 'POST',
+    body: JSON.stringify({ userId, reminderTime }),
+  });
+  return savedTime;
+}
