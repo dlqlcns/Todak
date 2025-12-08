@@ -31,7 +31,8 @@ export interface MoodRecord {
 }
 
 export interface User {
-  id: string; // unique user id
+  id: number; // unique user id from DB
+  loginId: string;
   nickname: string;
   startDate: string; // ISO Date
 }

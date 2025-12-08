@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { User, MoodRecord, ScreenName, EmotionId, Recommendation } from './types';
 import { EMOTIONS, MOCK_RECOMMENDATIONS, AI_EMPATHY_MESSAGES } from './constants';
 import { generateEmpathyMessage, generateWeeklyReview, generateMonthlyReview, generateMediaRecommendations } from './services/aiService';
+import { fetchUserMoods, loginUser, registerUser, saveUserMood, deleteUserMood, deleteUserAccount, MoodPayload } from './services/api';
 import { Card, Button, BottomNav, Header, ModalWrapper } from './components/Components';
 import { CalendarModal } from './components/CalendarModal';
 import { 
@@ -19,62 +20,53 @@ const LoginScreen: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
   const [view, setView] = useState<'landing' | 'login' | 'signup'>('landing');
   const [formData, setFormData] = useState({ id: '', password: '', nickname: '' });
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
     setError('');
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const { id, password, nickname } = formData;
-    
+
     if (!id || !password) {
         setError('아이디와 비밀번호를 모두 입력해주세요.');
         return;
     }
 
-    // Simple LocalStorage Auth
-    const usersStr = localStorage.getItem('todak_users');
-    const users: any[] = usersStr ? JSON.parse(usersStr) : [];
-
-    if (view === 'login') {
-        if (users.length === 0) {
-             setError('등록된 회원이 없습니다. 회원가입을 먼저 해주세요.');
-             return;
+    setIsSubmitting(true);
+    try {
+        if (view === 'login') {
+            const loggedIn = await loginUser(id, password);
+            onLogin(loggedIn);
+        } else if (view === 'signup') {
+            if (!nickname) {
+                setError('닉네임을 입력해주세요.');
+                setIsSubmitting(false);
+                return;
+            }
+            const newUser = await registerUser(id, password, nickname);
+            onLogin(newUser);
         }
-        // Login Logic
-        const foundUser = users.find(u => u.id === id && u.password === password);
-        if (foundUser) {
-            onLogin({ id: foundUser.id, nickname: foundUser.nickname, startDate: foundUser.startDate });
-        } else {
-            setError('아이디 또는 비밀번호가 올바르지 않습니다.');
-        }
-    } else if (view === 'signup') {
-        if (!nickname) {
-            setError('닉네임을 입력해주세요.');
-            return;
-        }
-        // Signup Logic
-        if (users.some(u => u.id === id)) {
-            setError('이미 사용 중인 아이디입니다.');
-            return;
-        }
-        
-        const newUser = { 
-            id, 
-            password, 
-            nickname, 
-            startDate: new Date().toISOString() 
-        };
-        
-        users.push(newUser);
-        localStorage.setItem('todak_users', JSON.stringify(users));
-        onLogin({ id: newUser.id, nickname: newUser.nickname, startDate: newUser.startDate });
+    } catch (err: any) {
+        setError(err.message || '요청을 처리하지 못했어요. 다시 시도해주세요.');
+    } finally {
+        setIsSubmitting(false);
     }
   };
 
-  const handleGuestLogin = () => {
-      onLogin({ id: `guest_${Date.now()}`, nickname: '게스트', startDate: new Date().toISOString() });
+  const handleGuestLogin = async () => {
+      setIsSubmitting(true);
+      try {
+          const guestId = `guest_${Date.now()}`;
+          const guestUser = await registerUser(guestId, guestId, '게스트');
+          onLogin(guestUser);
+      } catch (err: any) {
+          setError(err.message || '게스트 로그인에 실패했어요.');
+      } finally {
+          setIsSubmitting(false);
+      }
   };
 
   const Background = () => (
@@ -96,18 +88,18 @@ const LoginScreen: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
           <h1 className="text-3xl font-bold text-warmbrown mb-2 font-sans tracking-tight">마음, 토닥</h1>
           <p className="text-warmbrown/60 mb-12 text-center">당신의 하루를 따뜻하게 안아줄게요</p>
           
-          <div className="w-full space-y-4">
-              <Button fullWidth onClick={() => setView('login')} className="bg-olive text-white shadow-lg shadow-olive/20 py-4 text-lg hover:scale-[1.02] transition-transform">
-                로그인
-              </Button>
-              <Button fullWidth variant="secondary" onClick={() => setView('signup')} className="bg-white border-none shadow-md text-warmbrown hover:bg-gray-50 py-4 text-lg hover:scale-[1.02] transition-transform">
-                회원가입
-              </Button>
-          </div>
-  
-          <button onClick={handleGuestLogin} className="mt-8 text-warmbrown/40 text-sm underline underline-offset-4 hover:text-olive transition-colors">
-              둘러보기
-          </button>
+            <div className="w-full space-y-4">
+                <Button fullWidth onClick={() => setView('login')} disabled={isSubmitting} className="bg-olive text-white shadow-lg shadow-olive/20 py-4 text-lg hover:scale-[1.02] transition-transform disabled:opacity-70 disabled:cursor-not-allowed">
+                  로그인
+                </Button>
+                <Button fullWidth variant="secondary" onClick={() => setView('signup')} disabled={isSubmitting} className="bg-white border-none shadow-md text-warmbrown hover:bg-gray-50 py-4 text-lg hover:scale-[1.02] transition-transform disabled:opacity-70 disabled:cursor-not-allowed">
+                  회원가입
+                </Button>
+            </div>
+
+            <button onClick={handleGuestLogin} disabled={isSubmitting} className="mt-8 text-warmbrown/40 text-sm underline underline-offset-4 hover:text-olive transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
+                둘러보기
+            </button>
         </div>
       </div>
     );
@@ -176,8 +168,8 @@ const LoginScreen: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
 
             {error && <p className="text-softorange text-sm mt-4 font-medium animate-pulse flex items-center gap-1">⚠️ {error}</p>}
 
-            <Button fullWidth onClick={handleSubmit} className="mt-10 shadow-xl shadow-olive/20 py-4 text-lg hover:scale-[1.02] transition-transform">
-                {isSignup ? '가입 완료' : '로그인'}
+            <Button fullWidth onClick={handleSubmit} disabled={isSubmitting} className="mt-10 shadow-xl shadow-olive/20 py-4 text-lg hover:scale-[1.02] transition-transform disabled:opacity-70 disabled:cursor-not-allowed">
+                {isSubmitting ? '처리 중...' : (isSignup ? '가입 완료' : '로그인')}
             </Button>
         </div>
     </div>
@@ -313,15 +305,16 @@ const ServiceGuideOverlay: React.FC<{ onDismiss: () => void }> = ({ onDismiss })
 };
 
 // 4. Home Screen
-const HomeScreen: React.FC<{ 
-  user: User; 
-  todayMood?: MoodRecord; 
-  onSaveMood: (emoIds: EmotionId[], text: string, aiMsg?: string, recs?: Recommendation[]) => void;
+const HomeScreen: React.FC<{
+  user: User;
+  todayMood?: MoodRecord;
+  onSaveMood: (emoIds: EmotionId[], text: string, aiMsg?: string, recs?: Recommendation[]) => Promise<void>;
   onLogout: () => void;
 }> = ({ user, todayMood, onSaveMood, onLogout }) => {
   const [selectedEmos, setSelectedEmos] = useState<EmotionId[]>([]);
   const [text, setText] = useState('');
   const [isLoadingAi, setIsLoadingAi] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   // Toggle emotion selection (max 3)
   const toggleEmotion = (id: EmotionId) => {
@@ -429,45 +422,46 @@ const HomeScreen: React.FC<{
   const handleSubmit = async () => {
     if (selectedEmos.length === 0) return;
     setIsLoadingAi(true);
-    
-    // 1. Generate real AI message
-    const msgPromise = generateEmpathyMessage(selectedEmos, text);
+    setSaveError('');
 
-    // 2. Generate Media Recommendations
-    const emotionLabels = selectedEmos.map(id => EMOTIONS.find(e => e.id === id)?.label).join(', ');
-    const recsPromise = generateMediaRecommendations(emotionLabels, text);
+    try {
+      const msgPromise = generateEmpathyMessage(selectedEmos, text);
+      const emotionLabels = selectedEmos.map(id => EMOTIONS.find(e => e.id === id)?.label).join(', ');
+      const recsPromise = generateMediaRecommendations(emotionLabels, text);
 
-    // 3. Get one static activity (Keep existing logic)
-    const primaryId = selectedEmos[0];
-    const staticRecs = MOCK_RECOMMENDATIONS[primaryId] || [];
-    const activityRec = staticRecs.find(r => r.type === 'activity') || staticRecs[0];
+      const primaryId = selectedEmos[0];
+      const staticRecs = MOCK_RECOMMENDATIONS[primaryId] || [];
+      const activityRec = staticRecs.find(r => r.type === 'activity') || staticRecs[0];
 
-    const [msg, mediaRecs] = await Promise.all([msgPromise, recsPromise]);
-    
-    // Combine Recommendations
-    const finalRecs: Recommendation[] = [
-        { 
-            id: 'gen-music', 
-            type: 'music', 
-            title: mediaRecs.music.title, 
-            desc: mediaRecs.music.reason, 
-            link: `https://open.spotify.com/search/${encodeURIComponent(mediaRecs.music.searchQuery)}` 
+      const [msg, mediaRecs] = await Promise.all([msgPromise, recsPromise]);
+
+      const finalRecs: Recommendation[] = [
+        {
+          id: 'gen-music',
+          type: 'music',
+          title: mediaRecs.music.title,
+          desc: mediaRecs.music.reason,
+          link: `https://open.spotify.com/search/${encodeURIComponent(mediaRecs.music.searchQuery)}`
         },
-        { 
-            id: 'gen-video', 
-            type: 'video', 
-            title: mediaRecs.video.title, 
-            desc: mediaRecs.video.reason, 
-            link: `https://www.youtube.com/results?search_query=${encodeURIComponent(mediaRecs.video.searchQuery)}` 
+        {
+          id: 'gen-video',
+          type: 'video',
+          title: mediaRecs.video.title,
+          desc: mediaRecs.video.reason,
+          link: `https://www.youtube.com/results?search_query=${encodeURIComponent(mediaRecs.video.searchQuery)}`
         },
-        { 
-            ...activityRec, 
-            id: 'static-act' // Ensure ID uniqueness
+        {
+          ...activityRec,
+          id: 'static-act'
         }
-    ];
+      ];
 
-    onSaveMood(selectedEmos, text, msg, finalRecs);
-    setIsLoadingAi(false);
+      await onSaveMood(selectedEmos, text, msg, finalRecs);
+    } catch (error: any) {
+      setSaveError(error?.message || '기록 저장에 실패했어요. 잠시 후 다시 시도해주세요.');
+    } finally {
+      setIsLoadingAi(false);
+    }
   };
 
   if (isLoadingAi) {
@@ -530,12 +524,13 @@ const HomeScreen: React.FC<{
                     placeholder="오늘 어떤 일이 있었나요? 편하게 적어주세요."
                     className="w-full h-40 p-6 bg-white rounded-[24px] border border-olivegray/20 focus:ring-2 focus:ring-olive focus:border-transparent resize-none mb-6 text-warmbrown placeholder:text-warmbrown/30 shadow-sm"
                 />
-                <Button fullWidth onClick={handleSubmit} disabled={selectedEmos.length === 0} className="py-5 text-lg shadow-xl shadow-olive/20">
-                    기록 완료하기
+                <Button fullWidth onClick={handleSubmit} disabled={selectedEmos.length === 0 || isLoadingAi} className="py-5 text-lg shadow-xl shadow-olive/20 disabled:opacity-70 disabled:cursor-not-allowed">
+                    {isLoadingAi ? '기록 중...' : '기록 완료하기'}
                 </Button>
+                {saveError && <p className="text-softorange text-sm mt-3 px-1">{saveError}</p>}
+          </div>
         </div>
       </div>
-    </div>
   );
 };
 
@@ -1088,6 +1083,8 @@ const App: React.FC = () => {
   const [moods, setMoods] = useState<Record<string, MoodRecord>>({});
   const [weeklyReview, setWeeklyReview] = useState<string | null>(null);
   const [monthlyReview, setMonthlyReview] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [dataError, setDataError] = useState('');
   
   // --- Shared Modal State ---
   const [modalDate, setModalDate] = useState<string | null>(null);
@@ -1098,29 +1095,14 @@ const App: React.FC = () => {
   useEffect(() => {
     const savedUser = localStorage.getItem('todak_current_user');
     if (savedUser) {
-        setUser(JSON.parse(savedUser));
-        setShowOnboarding(false); // Skip onboarding on auto-login
+        try {
+            const parsed = JSON.parse(savedUser);
+            setUser(parsed);
+            setShowOnboarding(false); // Skip onboarding on auto-login
+        } catch (error) {
+            localStorage.removeItem('todak_current_user');
+        }
     }
-  }, []);
-
-  // Mock initial data
-  useEffect(() => {
-    const dummyMoods: Record<string, MoodRecord> = {};
-    const today = new Date();
-    [1, 3, 4, 7, 10].forEach(diff => {
-        const d = subDays(today, diff);
-        const ds = format(d, 'yyyy-MM-dd');
-        const randomEmo = EMOTIONS[Math.floor(Math.random() * 8)]; // Top 8
-        dummyMoods[ds] = {
-            id: Math.random().toString(),
-            date: ds,
-            emotionIds: [randomEmo.id], // Converted to array
-            content: "잠시 쉬어가고 싶었던 날.",
-            aiMessage: "쉼표가 필요한 날이었군요. 잘했어요, 푹 쉬는 것도 중요해요.",
-            timestamp: d.getTime()
-        };
-    });
-    setMoods(dummyMoods);
   }, []);
 
   // Check LocalStorage for guide preference on user state change
@@ -1132,6 +1114,34 @@ const App: React.FC = () => {
           }
       }
   }, [user, showOnboarding]);
+
+  useEffect(() => {
+      if (!user) {
+          setMoods({});
+          return;
+      }
+
+      const loadMoods = async () => {
+          setIsSyncing(true);
+          setDataError('');
+          try {
+              const records = await fetchUserMoods(user.id);
+              const mapped: Record<string, MoodRecord> = {};
+              records.forEach(rec => {
+                  mapped[rec.date] = rec;
+              });
+              setMoods(mapped);
+          } catch (error) {
+              console.error('Failed to load moods', error);
+              setMoods({});
+              setDataError('기록을 불러오지 못했어요. 데이터베이스 설정을 확인해 주세요.');
+          } finally {
+              setIsSyncing(false);
+          }
+      };
+
+      loadMoods();
+  }, [user]);
 
   const handleLogin = (userObj: User) => {
     setUser(userObj);
@@ -1148,39 +1158,46 @@ const App: React.FC = () => {
     }
   };
 
-  const handleSaveMood = (dateStr: string, emoIds: EmotionId[], text: string, aiMsg?: string, recs?: Recommendation[]) => {
-    setMoods(prev => {
-        const existing = prev[dateStr];
-        return {
-            ...prev,
-            [dateStr]: {
-                id: existing?.id || Math.random().toString(),
-                date: dateStr,
-                emotionIds: emoIds,
-                content: text,
-                aiMessage: aiMsg !== undefined ? aiMsg : existing?.aiMessage, // Preserve or update
-                recommendations: recs || existing?.recommendations, // Persist or preserve
-                timestamp: new Date().getTime()
-            }
-        };
-    });
+  const handleSaveMood = async (dateStr: string, emoIds: EmotionId[], text: string, aiMsg?: string, recs?: Recommendation[]) => {
+    if (!user) {
+        throw new Error('로그인이 필요합니다.');
+    }
+
+    const payload: MoodPayload = {
+        date: dateStr,
+        emotionIds: emoIds,
+        content: text,
+        aiMessage: aiMsg,
+        recommendations: recs,
+        timestamp: new Date().getTime()
+    };
+
+    const saved = await saveUserMood(user.id, payload);
+    setMoods(prev => ({
+        ...prev,
+        [dateStr]: saved
+    }));
+    setDataError('');
     if (isSameDay(new Date(dateStr), new Date())) {
-        setWeeklyReview(null); 
+        setWeeklyReview(null);
         setMonthlyReview(null);
     }
   };
 
-  const handleSaveTodayMood = (emoIds: EmotionId[], text: string, aiMsg?: string, recs?: Recommendation[]) => {
+  const handleSaveTodayMood = async (emoIds: EmotionId[], text: string, aiMsg?: string, recs?: Recommendation[]) => {
       const todayStr = format(new Date(), 'yyyy-MM-dd');
-      handleSaveMood(todayStr, emoIds, text, aiMsg, recs);
+      await handleSaveMood(todayStr, emoIds, text, aiMsg, recs);
   };
 
-  const handleDeleteMood = (dateStr: string) => {
+  const handleDeleteMood = async (dateStr: string) => {
+      if (!user) return;
+      await deleteUserMood(user.id, dateStr);
       setMoods(prev => {
           const newMoods = { ...prev };
           delete newMoods[dateStr];
           return newMoods;
       });
+      setDataError('');
       setWeeklyReview(null);
       setMonthlyReview(null);
   };
@@ -1190,20 +1207,20 @@ const App: React.FC = () => {
       localStorage.removeItem('todak_current_user');
       setCurrentTab('home'); // Reset tab
       setShowGuide(false);
+      setDataError('');
   };
 
   const openDeleteModal = () => setIsDeleteModalOpen(true);
   const closeDeleteModal = () => setIsDeleteModalOpen(false);
 
-  const confirmDeleteAccount = () => {
-      // Remove from users list
-      if (user) {
-          const usersStr = localStorage.getItem('todak_users');
-          if (usersStr) {
-              let users = JSON.parse(usersStr);
-              users = users.filter((u: any) => u.id !== user.id);
-              localStorage.setItem('todak_users', JSON.stringify(users));
-          }
+  const confirmDeleteAccount = async () => {
+      if (!user) return;
+      try {
+          await deleteUserAccount(user.id);
+      } catch (error) {
+          console.error('Failed to delete account', error);
+          setDataError('회원 탈퇴에 실패했어요. 잠시 후 다시 시도해주세요.');
+          return;
       }
 
       setUser(null);
@@ -1214,7 +1231,7 @@ const App: React.FC = () => {
       setCurrentTab('home');
       setShowGuide(false);
       setIsDeleteModalOpen(false);
-      localStorage.removeItem('todak_guide_seen'); // Optional: Reset guide on account delete
+      localStorage.removeItem('todak_guide_seen');
   }
 
   // Shared modal handler
@@ -1273,10 +1290,20 @@ const App: React.FC = () => {
 
         {!showOnboarding && (
           <>
-            {/* Main Content Area */}
-            <div className="h-full overflow-y-auto no-scrollbar bg-[#F4F1EC] pb-24">
-                {renderScreen()}
-            </div>
+              {/* Main Content Area */}
+              <div className="h-full overflow-y-auto no-scrollbar bg-[#F4F1EC] pb-24">
+                  {dataError && (
+                      <div className="px-4 pt-4">
+                          <div className="bg-white border border-softorange/40 text-softorange text-sm px-4 py-3 rounded-2xl shadow-sm">
+                              {dataError}
+                          </div>
+                      </div>
+                  )}
+                  {isSyncing && !dataError && (
+                      <div className="px-4 pt-4 text-xs text-warmbrown/60">데이터를 동기화하는 중이에요...</div>
+                  )}
+                  {renderScreen()}
+              </div>
             
             {/* Bottom Nav */}
             <BottomNav current={currentTab} onNavigate={setCurrentTab} />
