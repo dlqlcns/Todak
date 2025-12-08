@@ -35,6 +35,7 @@ export interface User {
   nickname: string;
   startDate: string; // ISO Date
   hasSeenGuide?: boolean;
+  isGuest?: boolean;
 }
 
 export type ScreenName = 'home' | 'calendar' | 'report' | 'notification' | 'profile';

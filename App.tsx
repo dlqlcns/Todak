@@ -48,7 +48,12 @@ const LoginScreen: React.FC<{ onLogin: (id: string, password: string) => Promise
             await onSignup(id, password, nickname);
         }
     } catch (err: any) {
-        setError(err?.message || '요청을 처리할 수 없습니다.');
+        const message = err?.message;
+        if (typeof message === 'string' && message.toLowerCase().includes('failed to fetch')) {
+            setError('서버와 통신할 수 없습니다. 네트워크 상태를 확인하거나 잠시 후 다시 시도해주세요.');
+        } else {
+            setError(message || '요청을 처리할 수 없습니다.');
+        }
     } finally {
         setLoading(false);
     }
@@ -298,15 +303,42 @@ const ServiceGuideOverlay: React.FC<{ onDismiss: (remember?: boolean) => void }>
 };
 
 // 4. Home Screen
-const HomeScreen: React.FC<{ 
+const HomeScreen: React.FC<{
   user: User;
   todayMood?: MoodRecord;
   onSaveMood: (emoIds: EmotionId[], text: string, aiMsg?: string, recs?: Recommendation[]) => Promise<void>;
   onLogout: () => void;
-}> = ({ user, todayMood, onSaveMood, onLogout }) => {
+  isGuest?: boolean;
+  onRequestLogin: () => void;
+}> = ({ user, todayMood, onSaveMood, onLogout, isGuest = false, onRequestLogin }) => {
   const [selectedEmos, setSelectedEmos] = useState<EmotionId[]>([]);
   const [text, setText] = useState('');
   const [isLoadingAi, setIsLoadingAi] = useState(false);
+
+  if (isGuest) {
+    return (
+      <div className="pb-28 space-y-6 animate-[fadeIn_0.5s_ease-out]">
+        <Header
+            subtitle={`${format(new Date(), 'M월 d일 EEEE', { locale: ko })}`}
+            title="오늘의 일기"
+            onLogout={onLogout}
+        />
+
+        <div className="px-6">
+            <Card className="text-center space-y-4 py-10">
+                <div className="text-4xl">🔒</div>
+                <h3 className="text-xl font-bold text-warmbrown">로그인이 필요한 기능이에요</h3>
+                <p className="text-warmbrown/60 text-sm leading-relaxed">
+                    감정 일기 작성은 로그인 후 이용할 수 있어요. 지금 로그인하고 토닥과 하루를 기록해보세요.
+                </p>
+                <Button fullWidth onClick={onRequestLogin} className="py-4">
+                    로그인하러 가기
+                </Button>
+            </Card>
+        </div>
+      </div>
+    );
+  }
 
   // Toggle emotion selection (max 3)
   const toggleEmotion = (id: EmotionId) => {
@@ -871,8 +903,8 @@ const ReportScreen: React.FC<{
 };
 
 // 7. Notification Screen
-const NotificationScreen: React.FC<{ 
-    onLogout: () => void; 
+const NotificationScreen: React.FC<{
+    onLogout: () => void;
     onBack: () => void;
 }> = ({ onLogout, onBack }) => {
     return (
@@ -906,9 +938,32 @@ const NotificationScreen: React.FC<{
     );
 };
 
+const LoginRequiredScreen: React.FC<{ title: string; description: string; onLogout: () => void; onBack?: () => void; }> = ({
+    title,
+    description,
+    onLogout,
+    onBack,
+}) => {
+    return (
+        <div className="pb-28 min-h-screen">
+            <Header title={title} onLogout={onLogout} onBack={onBack} />
+            <div className="px-6">
+                <Card className="mt-6 text-center space-y-4 py-10">
+                    <div className="text-4xl">🔒</div>
+                    <h3 className="text-xl font-bold text-warmbrown">로그인이 필요해요</h3>
+                    <p className="text-warmbrown/60 text-sm leading-relaxed">{description}</p>
+                    <Button fullWidth onClick={onLogout} className="py-4">
+                        로그인 화면으로 이동
+                    </Button>
+                </Card>
+            </div>
+        </div>
+    );
+};
+
 // 8. Profile Screen
-const ProfileScreen: React.FC<{ 
-    user: User; 
+const ProfileScreen: React.FC<{
+    user: User;
     moods: Record<string, MoodRecord>;
     onLogout: () => void;
     onBack: () => void;
@@ -1084,17 +1139,23 @@ const App: React.FC = () => {
     }
   };
 
-  const handleAuthSuccess = async (authUser: any) => {
+  const handleAuthSuccess = async (authUser: any, options?: { isGuest?: boolean }) => {
     const normalizedUser: User = {
         id: authUser.id,
         nickname: authUser.nickname,
         startDate: typeof authUser.startDate === 'string' ? authUser.startDate : new Date(authUser.startDate).toISOString(),
         hasSeenGuide: authUser.hasSeenGuide,
+        isGuest: options?.isGuest || false,
     };
     setUser(normalizedUser);
-    setShowOnboarding(true);
-    setShowGuide(!authUser.hasSeenGuide);
-    await hydrateMoods(authUser.id);
+    setShowOnboarding(!options?.isGuest);
+    setShowGuide(!options?.isGuest && !authUser.hasSeenGuide);
+
+    if (!options?.isGuest) {
+        await hydrateMoods(authUser.id);
+    } else {
+        setMoods({});
+    }
   };
 
   const handleLogin = async (id: string, password: string) => {
@@ -1108,15 +1169,15 @@ const App: React.FC = () => {
   };
 
   const handleGuestLogin = async () => {
-    const guestId = `guest_${Date.now()}`;
-    try {
-        const authUser = await signup(guestId, 'guest', '게스트');
-        await handleAuthSuccess(authUser);
-    } catch (err) {
-        // If guest exists, try login instead
-        const authUser = await login(guestId, 'guest');
-        await handleAuthSuccess(authUser);
-    }
+    const guestUser = {
+        id: `guest_${Date.now()}`,
+        password: 'guest',
+        nickname: '게스트',
+        startDate: new Date().toISOString(),
+        hasSeenGuide: true,
+    };
+
+    await handleAuthSuccess(guestUser, { isGuest: true });
   };
 
   const handleFinishOnboarding = () => {
@@ -1127,7 +1188,7 @@ const App: React.FC = () => {
   };
 
   const handleSaveMood = async (dateStr: string, emoIds: EmotionId[], text: string, aiMsg?: string, recs?: Recommendation[]) => {
-    if (!user) return;
+    if (!user || user.isGuest) return;
     const saved = await apiSaveMood(user.id, {
         id: moods[dateStr]?.id,
         date: dateStr,
@@ -1150,12 +1211,13 @@ const App: React.FC = () => {
   };
 
   const handleSaveTodayMood = async (emoIds: EmotionId[], text: string, aiMsg?: string, recs?: Recommendation[]) => {
+      if (user?.isGuest) return;
       const todayStr = format(new Date(), 'yyyy-MM-dd');
       await handleSaveMood(todayStr, emoIds, text, aiMsg, recs);
   };
 
   const handleDeleteMood = async (dateStr: string) => {
-      if (!user || !moods[dateStr]) return;
+      if (!user || user.isGuest || !moods[dateStr]) return;
       await apiDeleteMood(user.id, moods[dateStr].id);
       setMoods(prev => {
           const newMoods = { ...prev };
@@ -1202,6 +1264,10 @@ const App: React.FC = () => {
 
   // Shared modal handler
   const handleOpenModal = (dateStr: string) => {
+      if (user?.isGuest) {
+          alert('로그인 후 일기를 작성할 수 있어요.');
+          return;
+      }
       setModalDate(dateStr);
       setIsModalOpen(true);
   };
@@ -1213,16 +1279,27 @@ const App: React.FC = () => {
 
   if (!user) return <LoginScreen onLogin={handleLogin} onSignup={handleSignup} onGuest={handleGuestLogin} />;
 
+  const isGuest = user.isGuest;
+
   const renderScreen = () => {
     switch (currentTab) {
       case 'home':
         const todayStr = format(new Date(), 'yyyy-MM-dd');
-        return <HomeScreen user={user} todayMood={moods[todayStr]} onSaveMood={handleSaveTodayMood} onLogout={handleLogout} />;
+        return (
+            <HomeScreen
+                user={user}
+                todayMood={moods[todayStr]}
+                onSaveMood={handleSaveTodayMood}
+                onLogout={handleLogout}
+                isGuest={isGuest}
+                onRequestLogin={handleLogout}
+            />
+        );
       case 'calendar':
         return <CalendarScreen moods={moods} onDateClick={handleOpenModal} onLogout={handleLogout} onBack={handleBack} />;
       case 'report':
         return (
-            <ReportScreen 
+            <ReportScreen
                 moods={moods} 
                 weeklyReview={weeklyReview} 
                 monthlyReview={monthlyReview}
@@ -1236,13 +1313,20 @@ const App: React.FC = () => {
       case 'notification':
         return <NotificationScreen onLogout={handleLogout} onBack={handleBack} />;
       case 'profile':
-        return (
-            <ProfileScreen 
-                user={user} 
-                moods={moods} 
-                onLogout={handleLogout} 
-                onBack={handleBack} 
-                openDeleteModal={openDeleteModal} 
+        return isGuest ? (
+            <LoginRequiredScreen
+                title="마이 페이지"
+                description="내 정보와 기록은 로그인 후 확인할 수 있어요."
+                onLogout={handleLogout}
+                onBack={handleBack}
+            />
+        ) : (
+            <ProfileScreen
+                user={user}
+                moods={moods}
+                onLogout={handleLogout}
+                onBack={handleBack}
+                openDeleteModal={openDeleteModal}
             />
         );
       default:

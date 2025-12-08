@@ -1,15 +1,40 @@
 import { EmotionId, MoodRecord, User } from "../types";
 
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const DEFAULT_API_BASE = "https://todak-production-3b85.up.railway.app";
+const API_BASE = (import.meta.env.VITE_API_URL || DEFAULT_API_BASE).replace(/\/$/, "");
 
 interface AuthResponse extends User {
   hasSeenGuide?: boolean;
 }
 
+const parseErrorMessage = async (res: Response) => {
+  // Try to preserve the backend's error detail (FastAPI uses "detail") before
+  // falling back to generic status text so the UI can surface a meaningful message.
+  let message = res.statusText || "요청을 처리할 수 없습니다.";
+
+  try {
+    const data = await res.clone().json();
+    if (typeof data?.detail === "string") return data.detail;
+    if (Array.isArray(data?.detail) && data.detail[0]?.msg) return data.detail[0].msg;
+    if (typeof data?.message === "string") return data.message;
+  } catch (_) {
+    // JSON parsing can fail for plain-text responses; ignore and try text next.
+  }
+
+  try {
+    const text = await res.text();
+    if (text) return text;
+  } catch (_) {
+    // Ignore text parsing issues and fall back to the status text.
+  }
+
+  return message;
+};
+
 const handleResponse = async (res: Response) => {
   if (!res.ok) {
-    const detail = await res.text();
-    throw new Error(detail || res.statusText);
+    const detail = await parseErrorMessage(res);
+    throw new Error(detail);
   }
   return res.json();
 };
