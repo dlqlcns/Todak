@@ -243,6 +243,7 @@ app.post('/api/moods', async (req, res) => {
         .insert({
           user_id: userId,
           record_date: date,
+          external_id: crypto.randomUUID(),
           content,
           ai_message: aiMessage ?? null,
           timestamp_ms: nowMs,
