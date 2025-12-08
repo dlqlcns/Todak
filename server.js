@@ -154,6 +154,7 @@ app.get('/api/moods', async (req, res) => {
 
     const recordIds = (records || []).map((row) => row.id).filter(Boolean);
     let emotionsMap = new Map();
+    let recsMap = new Map();
 
     if (recordIds.length > 0) {
       const { data: emotions, error: emotionsError } = await supabase
@@ -173,6 +174,28 @@ app.get('/api/moods', async (req, res) => {
         acc.set(row.mood_record_id, current);
         return acc;
       }, new Map());
+
+      const { data: recs, error: recsError } = await supabase
+        .from('mood_recommendations')
+        .select('mood_record_id, rec_type, rec_key, title, description, link')
+        .in('mood_record_id', recordIds);
+
+      if (recsError) {
+        throw recsError;
+      }
+
+      recsMap = recs.reduce((acc, row) => {
+        const current = acc.get(row.mood_record_id) || [];
+        current.push({
+          id: row.rec_key,
+          type: row.rec_type,
+          title: row.title,
+          desc: row.description,
+          link: row.link ?? undefined,
+        });
+        acc.set(row.mood_record_id, current);
+        return acc;
+      }, new Map());
     }
 
     const mapped = (records || []).map((row) => ({
@@ -182,6 +205,7 @@ app.get('/api/moods', async (req, res) => {
       aiMessage: row.ai_message || undefined,
       timestamp: row.timestamp_ms ?? Date.now(),
       emotionIds: emotionsMap.get(row.id) || [],
+      recommendations: recsMap.get(row.id) || [],
     }));
 
     res.json(mapped);
@@ -192,7 +216,7 @@ app.get('/api/moods', async (req, res) => {
 });
 
 app.post('/api/moods', async (req, res) => {
-  const { userId, date, emotionIds, content, aiMessage } = req.body || {};
+  const { userId, date, emotionIds, content, aiMessage, recommendations } = req.body || {};
 
   if (!userId || !date || !Array.isArray(emotionIds) || emotionIds.length === 0 || !content) {
     return res.status(400).send('필수 정보가 누락되었어요.');
@@ -229,13 +253,22 @@ app.post('/api/moods', async (req, res) => {
         throw updateError;
       }
 
-      const { error: deleteError } = await supabase
+      const { error: deleteEmotionsError } = await supabase
         .from('mood_record_emotions')
         .delete()
         .eq('mood_record_id', recordId);
 
-      if (deleteError) {
-        throw deleteError;
+      if (deleteEmotionsError) {
+        throw deleteEmotionsError;
+      }
+
+      const { error: deleteRecsError } = await supabase
+        .from('mood_recommendations')
+        .delete()
+        .eq('mood_record_id', recordId);
+
+      if (deleteRecsError) {
+        throw deleteRecsError;
       }
     } else {
       const { data: inserted, error: insertError } = await supabase
@@ -270,7 +303,25 @@ app.post('/api/moods', async (req, res) => {
       }
     }
 
-    res.json({ id: recordId, date, emotionIds, content, aiMessage, timestamp: nowMs });
+    const recPayload = Array.isArray(recommendations)
+      ? recommendations.map((rec) => ({
+          mood_record_id: recordId,
+          rec_type: rec.type,
+          rec_key: rec.id,
+          title: rec.title,
+          description: rec.desc,
+          link: rec.link ?? null,
+        }))
+      : [];
+
+    if (recPayload.length > 0) {
+      const { error: insertRecsError } = await supabase.from('mood_recommendations').insert(recPayload);
+      if (insertRecsError) {
+        throw insertRecsError;
+      }
+    }
+
+    res.json({ id: recordId, date, emotionIds, content, aiMessage, recommendations: recommendations || [], timestamp: nowMs });
   } catch (err) {
     console.error('Save mood error:', err);
     res.status(500).send('감정 기록 저장에 실패했어요.');
