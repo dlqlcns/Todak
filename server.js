@@ -2,67 +2,11 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import express from 'express';
 import cors from 'cors';
-import mysql from 'mysql2/promise';
 import crypto from 'crypto';
+import { createClient } from '@supabase/supabase-js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-function isPlaceholder(value) {
-  return typeof value === 'string' && value.includes('${');
-}
-
-function parseDbUrl(urlString) {
-  try {
-    if (!urlString || isPlaceholder(urlString)) return null;
-    const url = new URL(urlString);
-    return {
-      host: url.hostname,
-      port: url.port ? Number(url.port) : 3306,
-      user: url.username,
-      password: url.password,
-      database: url.pathname.replace('/', '') || undefined,
-    };
-  } catch (err) {
-    console.error('DB URL parsing failed:', err.message);
-    return null;
-  }
-}
-
-function resolveDbConfig() {
-  const parsed = parseDbUrl(process.env.MYSQL_URL || process.env.DATABASE_URL || process.env.MYSQL_PUBLIC_URL);
-  const host =
-    (!isPlaceholder(process.env.MYSQLHOST) && process.env.MYSQLHOST) ||
-    (!isPlaceholder(process.env.MYSQL_HOST) && process.env.MYSQL_HOST) ||
-    (!isPlaceholder(process.env.RAILWAY_TCP_PROXY_DOMAIN) && process.env.RAILWAY_TCP_PROXY_DOMAIN) ||
-    (!isPlaceholder(process.env.RAILWAY_PRIVATE_DOMAIN) && process.env.RAILWAY_PRIVATE_DOMAIN);
-  const port =
-    (!isPlaceholder(process.env.MYSQLPORT) && process.env.MYSQLPORT) ||
-    (!isPlaceholder(process.env.MYSQL_PORT) && process.env.MYSQL_PORT) ||
-    (!isPlaceholder(process.env.RAILWAY_TCP_PROXY_PORT) && process.env.RAILWAY_TCP_PROXY_PORT) ||
-    (!isPlaceholder(process.env.RAILWAY_PRIVATE_PORT) && process.env.RAILWAY_PRIVATE_PORT);
-  const user =
-    (!isPlaceholder(process.env.MYSQLUSER) && process.env.MYSQLUSER) ||
-    (!isPlaceholder(process.env.MYSQL_USER) && process.env.MYSQL_USER) ||
-    'root';
-  const password =
-    (!isPlaceholder(process.env.MYSQLPASSWORD) && process.env.MYSQLPASSWORD) ||
-    (!isPlaceholder(process.env.MYSQL_PASSWORD) && process.env.MYSQL_PASSWORD) ||
-    (!isPlaceholder(process.env.MYSQL_ROOT_PASSWORD) && process.env.MYSQL_ROOT_PASSWORD);
-  const database =
-    (!isPlaceholder(process.env.MYSQL_DATABASE) && process.env.MYSQL_DATABASE) ||
-    (!isPlaceholder(process.env.MYSQLDATABASE) && process.env.MYSQLDATABASE);
-
-  return {
-    host: parsed?.host || host || 'localhost',
-    port: parsed?.port || Number(port) || 3306,
-    user: parsed?.user || user,
-    password: parsed?.password || password,
-    database: parsed?.database || database,
-    waitForConnections: true,
-    connectionLimit: 10,
-  };
-}
 
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');
@@ -77,28 +21,6 @@ function verifyPassword(password, storedHash) {
   return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(originalHash, 'hex'));
 }
 
-const dbConfig = resolveDbConfig();
-const pool = mysql.createPool(dbConfig);
-
-async function testDbConnection() {
-  try {
-    const conn = await pool.getConnection();
-    await conn.ping();
-    console.log(
-      `✅ MySQL connected: ${conn.config.host}:${conn.config.port}${conn.config.database ? `/${conn.config.database}` : ''}`
-    );
-    conn.release();
-  } catch (err) {
-    console.error('❌ MySQL connection failed:', err);
-  }
-}
-
-testDbConnection();
-
-const app = express();
-app.use(cors());
-app.use(express.json());
-
 function mapUser(row) {
   return {
     id: row.id,
@@ -108,6 +30,30 @@ function mapUser(row) {
   };
 }
 
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error('SUPABASE_URL와 SUPABASE_SERVICE_ROLE_KEY 환경 변수를 설정해주세요.');
+}
+
+const supabase = createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false } });
+
+async function testDbConnection() {
+  const { error } = await supabase.from('users').select('id').limit(1);
+  if (error) {
+    console.error('❌ Supabase connection failed:', error.message);
+  } else {
+    console.log('✅ Supabase connected');
+  }
+}
+
+await testDbConnection();
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
 app.post('/api/signup', async (req, res) => {
   const { loginId, password, nickname } = req.body || {};
 
@@ -115,27 +61,45 @@ app.post('/api/signup', async (req, res) => {
     return res.status(400).send('아이디, 비밀번호, 닉네임을 모두 입력해주세요.');
   }
 
-  const conn = await pool.getConnection();
   try {
-    const [existing] = await conn.query('SELECT id FROM users WHERE login_id = ?', [loginId]);
-    if (Array.isArray(existing) && existing.length > 0) {
+    const { data: existing, error: existingError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('login_id', loginId)
+      .maybeSingle();
+
+    if (existingError) {
+      throw existingError;
+    }
+
+    if (existing) {
       return res.status(400).send('이미 사용 중인 아이디예요.');
     }
 
     const passwordHash = hashPassword(password);
     const now = new Date();
-    const [result] = await conn.query(
-      'INSERT INTO users (login_id, password_hash, nickname, start_date, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
-      [loginId, passwordHash, nickname, now, now, now]
-    );
+    const { data: inserted, error: insertError } = await supabase
+      .from('users')
+      .insert({
+        login_id: loginId,
+        password_hash: passwordHash,
+        nickname,
+        start_date: now,
+        created_at: now,
+        updated_at: now,
+      })
+      .select('id')
+      .single();
 
-    const newUser = { id: result.insertId, loginId, nickname, startDate: now.toISOString() };
+    if (insertError) {
+      throw insertError;
+    }
+
+    const newUser = { id: inserted.id, loginId, nickname, startDate: now.toISOString() };
     res.json(newUser);
   } catch (err) {
     console.error('Signup error:', err);
     res.status(500).send('회원가입 처리 중 오류가 발생했어요.');
-  } finally {
-    conn.release();
   }
 });
 
@@ -145,12 +109,18 @@ app.post('/api/login', async (req, res) => {
     return res.status(400).send('아이디와 비밀번호를 모두 입력해주세요.');
   }
 
-  const conn = await pool.getConnection();
   try {
-    const [rows] = await conn.query('SELECT * FROM users WHERE login_id = ?', [loginId]);
-    const row = Array.isArray(rows) ? rows[0] : null;
-    if (!row) {
-      return res.status(401).send('존재하지 않는 아이디예요.');
+    const { data: row, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('login_id', loginId)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116' || error.code === 'PGRST204') {
+        return res.status(401).send('존재하지 않는 아이디예요.');
+      }
+      throw error;
     }
 
     const match = verifyPassword(password, row.password_hash);
@@ -162,8 +132,6 @@ app.post('/api/login', async (req, res) => {
   } catch (err) {
     console.error('Login error:', err);
     res.status(500).send('로그인 처리 중 오류가 발생했어요.');
-  } finally {
-    conn.release();
   }
 });
 
@@ -173,40 +141,53 @@ app.get('/api/moods', async (req, res) => {
     return res.status(400).send('userId가 필요합니다.');
   }
 
-  const conn = await pool.getConnection();
   try {
-    const [rows] = await conn.query(
-      `SELECT mr.id, mr.record_date, mr.content, mr.ai_message, mr.timestamp_ms, mre.emotion_id
-       FROM mood_records mr
-       LEFT JOIN mood_record_emotions mre ON mr.id = mre.mood_record_id
-       WHERE mr.user_id = ?
-       ORDER BY mr.record_date DESC`,
-      [userId]
-    );
+    const { data: records, error: recordsError } = await supabase
+      .from('mood_records')
+      .select('id, record_date, content, ai_message, timestamp_ms')
+      .eq('user_id', userId)
+      .order('record_date', { ascending: false });
 
-    const grouped = new Map();
-    for (const row of rows) {
-      const existing = grouped.get(row.id) || {
-        id: row.id,
-        date: row.record_date instanceof Date ? row.record_date.toISOString().slice(0, 10) : row.record_date,
-        emotionIds: [],
-        content: row.content || '',
-        aiMessage: row.ai_message || undefined,
-        timestamp: row.timestamp_ms ?? Date.now(),
-      };
-
-      if (row.emotion_id && !existing.emotionIds.includes(row.emotion_id)) {
-        existing.emotionIds.push(row.emotion_id);
-      }
-      grouped.set(row.id, existing);
+    if (recordsError) {
+      throw recordsError;
     }
 
-    res.json(Array.from(grouped.values()));
+    const recordIds = (records || []).map((row) => row.id).filter(Boolean);
+    let emotionsMap = new Map();
+
+    if (recordIds.length > 0) {
+      const { data: emotions, error: emotionsError } = await supabase
+        .from('mood_record_emotions')
+        .select('mood_record_id, emotion_id')
+        .in('mood_record_id', recordIds);
+
+      if (emotionsError) {
+        throw emotionsError;
+      }
+
+      emotionsMap = emotions.reduce((acc, row) => {
+        const current = acc.get(row.mood_record_id) || [];
+        if (!current.includes(row.emotion_id)) {
+          current.push(row.emotion_id);
+        }
+        acc.set(row.mood_record_id, current);
+        return acc;
+      }, new Map());
+    }
+
+    const mapped = (records || []).map((row) => ({
+      id: row.id,
+      date: row.record_date instanceof Date ? row.record_date.toISOString().slice(0, 10) : row.record_date,
+      content: row.content || '',
+      aiMessage: row.ai_message || undefined,
+      timestamp: row.timestamp_ms ?? Date.now(),
+      emotionIds: emotionsMap.get(row.id) || [],
+    }));
+
+    res.json(mapped);
   } catch (err) {
     console.error('Fetch moods error:', err);
     res.status(500).send('감정 기록을 불러오지 못했어요.');
-  } finally {
-    conn.release();
   }
 });
 
@@ -217,49 +198,81 @@ app.post('/api/moods', async (req, res) => {
     return res.status(400).send('필수 정보가 누락되었어요.');
   }
 
-  const conn = await pool.getConnection();
   try {
-    await conn.beginTransaction();
+    const { data: existing, error: existingError } = await supabase
+      .from('mood_records')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('record_date', date)
+      .maybeSingle();
 
-    const [existingRows] = await conn.query(
-      'SELECT id FROM mood_records WHERE user_id = ? AND record_date = ?',
-      [userId, date]
-    );
+    if (existingError) {
+      throw existingError;
+    }
 
-    let recordId = Array.isArray(existingRows) && existingRows[0]?.id;
+    const now = new Date();
     const nowMs = Date.now();
+    let recordId = existing?.id;
 
     if (recordId) {
-      await conn.query(
-        'UPDATE mood_records SET content = ?, ai_message = ?, timestamp_ms = ?, updated_at = ? WHERE id = ?',
-        [content, aiMessage || null, nowMs, new Date(), recordId]
-      );
-      await conn.query('DELETE FROM mood_record_emotions WHERE mood_record_id = ?', [recordId]);
+      const { error: updateError } = await supabase
+        .from('mood_records')
+        .update({
+          content,
+          ai_message: aiMessage ?? null,
+          timestamp_ms: nowMs,
+          updated_at: now,
+        })
+        .eq('id', recordId);
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      const { error: deleteError } = await supabase
+        .from('mood_record_emotions')
+        .delete()
+        .eq('mood_record_id', recordId);
+
+      if (deleteError) {
+        throw deleteError;
+      }
     } else {
-      const [insertResult] = await conn.query(
-        'INSERT INTO mood_records (user_id, record_date, content, ai_message, timestamp_ms, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        [userId, date, content, aiMessage || null, nowMs, new Date(), new Date()]
-      );
-      recordId = insertResult.insertId;
+      const { data: inserted, error: insertError } = await supabase
+        .from('mood_records')
+        .insert({
+          user_id: userId,
+          record_date: date,
+          content,
+          ai_message: aiMessage ?? null,
+          timestamp_ms: nowMs,
+          created_at: now,
+          updated_at: now,
+        })
+        .select('id')
+        .single();
+
+      if (insertError) {
+        throw insertError;
+      }
+
+      recordId = inserted.id;
     }
 
-    const emotionValues = emotionIds.map((emotionId) => [recordId, emotionId]);
-    if (emotionValues.length > 0) {
-      await conn.query(
-        'INSERT INTO mood_record_emotions (mood_record_id, emotion_id) VALUES ?',
-        [emotionValues]
-      );
-    }
+    if (emotionIds.length > 0) {
+      const { error: insertEmotionsError } = await supabase
+        .from('mood_record_emotions')
+        .insert(emotionIds.map((emotionId) => ({ mood_record_id: recordId, emotion_id: emotionId })));
 
-    await conn.commit();
+      if (insertEmotionsError) {
+        throw insertEmotionsError;
+      }
+    }
 
     res.json({ id: recordId, date, emotionIds, content, aiMessage, timestamp: nowMs });
   } catch (err) {
-    await conn.rollback();
     console.error('Save mood error:', err);
     res.status(500).send('감정 기록 저장에 실패했어요.');
-  } finally {
-    conn.release();
   }
 });
 
@@ -269,27 +282,35 @@ app.delete('/api/moods/:id', async (req, res) => {
     return res.status(400).send('삭제할 기록 id가 필요합니다.');
   }
 
-  const conn = await pool.getConnection();
   try {
-    await conn.beginTransaction();
-    await conn.query('DELETE FROM mood_record_emotions WHERE mood_record_id = ?', [recordId]);
-    await conn.query('DELETE FROM mood_records WHERE id = ?', [recordId]);
-    await conn.commit();
+    const { error: deleteEmotionsError } = await supabase
+      .from('mood_record_emotions')
+      .delete()
+      .eq('mood_record_id', recordId);
+
+    if (deleteEmotionsError) {
+      throw deleteEmotionsError;
+    }
+
+    const { error: deleteRecordError } = await supabase.from('mood_records').delete().eq('id', recordId);
+
+    if (deleteRecordError) {
+      throw deleteRecordError;
+    }
+
     res.status(204).end();
   } catch (err) {
-    await conn.rollback();
     console.error('Delete mood error:', err);
     res.status(500).send('기록 삭제에 실패했어요.');
-  } finally {
-    conn.release();
   }
 });
 
 app.get('/api/health', async (_req, res) => {
   try {
-    const conn = await pool.getConnection();
-    await conn.ping();
-    conn.release();
+    const { error } = await supabase.from('users').select('id').limit(1);
+    if (error) {
+      throw error;
+    }
     res.json({ status: 'ok' });
   } catch (err) {
     console.error('Health check failed:', err);
@@ -306,5 +327,5 @@ app.get('*', (_req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
-  console.log('DB config:', { ...dbConfig, password: dbConfig.password ? '***' : undefined });
+  console.log('Supabase URL:', supabaseUrl);
 });
