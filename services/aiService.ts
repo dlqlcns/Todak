@@ -3,7 +3,13 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { EmotionId, MoodRecord } from '../types';
 import { AI_EMPATHY_MESSAGES, EMOTIONS } from '../constants';
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const getGeminiApiKey = () => {
+  const envKey = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_GEMINI_API_KEY : undefined;
+  const nodeKey = typeof process !== 'undefined' ? (process.env.VITE_GEMINI_API_KEY || process.env.API_KEY) : undefined;
+  return envKey || nodeKey || "AIzaSyBF9Pg1UY-cJL9EU4ubm-pu9dBNfCrnlMI";
+};
+
+const ai = new GoogleGenAI({ apiKey: getGeminiApiKey() });
 
 /**
  * Generates an empathy message using Gemini API.
