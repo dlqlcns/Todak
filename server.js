@@ -1,6 +1,8 @@
 import { createServer } from 'http';
 import { createReadStream } from 'fs';
 import { stat } from 'fs/promises';
+import { pipeline } from 'stream';
+import { promisify } from 'util';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -21,11 +23,22 @@ const mimeTypes = {
   '.ico': 'image/x-icon',
 };
 
-const sendFile = (filePath, res) => {
+const pipe = promisify(pipeline);
+
+const sendFile = async (filePath, res) => {
   const ext = path.extname(filePath);
   const contentType = mimeTypes[ext] || 'application/octet-stream';
-  res.writeHead(200, { 'Content-Type': contentType });
-  createReadStream(filePath).pipe(res);
+
+  try {
+    res.writeHead(200, { 'Content-Type': contentType });
+    await pipe(createReadStream(filePath), res);
+  } catch (error) {
+    console.error(`Failed to serve file: ${filePath}`, error);
+    if (!res.headersSent) {
+      res.writeHead(500, { 'Content-Type': 'text/plain' });
+    }
+    res.end('Internal Server Error');
+  }
 };
 
 const server = createServer(async (req, res) => {
@@ -33,6 +46,7 @@ const server = createServer(async (req, res) => {
     const url = new URL(req.url || '/', 'http://localhost');
     const pathname = decodeURIComponent(url.pathname);
     let filePath = path.join(distDir, pathname);
+    const hasExtension = path.extname(pathname) !== '';
 
     if (!filePath.startsWith(distDir)) {
       res.writeHead(403);
@@ -47,15 +61,22 @@ const server = createServer(async (req, res) => {
         filePath = path.join(filePath, 'index.html');
         fileStats = await stat(filePath);
       }
-    } catch {
+    } catch (error) {
+      if (hasExtension) {
+        console.error(`Asset not found: ${pathname}`, error);
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.end('Not Found');
+        return;
+      }
+
       filePath = path.join(distDir, 'index.html');
       fileStats = await stat(filePath);
     }
 
     if (fileStats.isFile()) {
-      sendFile(filePath, res);
+      await sendFile(filePath, res);
     } else {
-      res.writeHead(404);
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
       res.end('Not Found');
     }
   } catch (error) {
