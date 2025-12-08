@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { User, MoodRecord, ScreenName, EmotionId, Recommendation } from './types';
-import { EMOTIONS, MOCK_RECOMMENDATIONS, AI_EMPATHY_MESSAGES } from './constants';
+import { EMOTIONS, AI_EMPATHY_MESSAGES } from './constants';
 import { generateEmpathyMessage, generateWeeklyReview, generateMonthlyReview, generateMediaRecommendations } from './services/aiService';
 import { Card, Button, BottomNav, Header, ModalWrapper } from './components/Components';
 import { CalendarModal } from './components/CalendarModal';
@@ -340,9 +340,9 @@ const HomeScreen: React.FC<{
     const allRecordedEmos = todayMood.emotionIds.map(id => EMOTIONS.find(e => e.id === id)).filter(Boolean);
     
     // Use stored recommendations or fallback to mock
-    const displayedRecs = todayMood.recommendations && todayMood.recommendations.length > 0 
-        ? todayMood.recommendations 
-        : MOCK_RECOMMENDATIONS[todayMood.emotionIds[0]] || [];
+    const displayedRecs = todayMood.recommendations && todayMood.recommendations.length > 0
+        ? todayMood.recommendations
+        : [];
 
     return (
       <div className="pb-28 space-y-6 animate-[fadeIn_0.5s_ease-out]">
@@ -437,32 +437,23 @@ const HomeScreen: React.FC<{
     const emotionLabels = selectedEmos.map(id => EMOTIONS.find(e => e.id === id)?.label).join(', ');
     const recsPromise = generateMediaRecommendations(emotionLabels, text);
 
-    // 3. Get one static activity (Keep existing logic)
-    const primaryId = selectedEmos[0];
-    const staticRecs = MOCK_RECOMMENDATIONS[primaryId] || [];
-    const activityRec = staticRecs.find(r => r.type === 'activity') || staticRecs[0];
-
     const [msg, mediaRecs] = await Promise.all([msgPromise, recsPromise]);
-    
-    // Combine Recommendations
+
+    // Combine Recommendations from AI only (external data source handled server-side)
     const finalRecs: Recommendation[] = [
-        { 
-            id: 'gen-music', 
-            type: 'music', 
-            title: mediaRecs.music.title, 
-            desc: mediaRecs.music.reason, 
-            link: `https://open.spotify.com/search/${encodeURIComponent(mediaRecs.music.searchQuery)}` 
+        {
+            id: 'gen-music',
+            type: 'music',
+            title: mediaRecs.music.title,
+            desc: mediaRecs.music.reason,
+            link: `https://open.spotify.com/search/${encodeURIComponent(mediaRecs.music.searchQuery)}`
         },
-        { 
-            id: 'gen-video', 
-            type: 'video', 
-            title: mediaRecs.video.title, 
-            desc: mediaRecs.video.reason, 
-            link: `https://www.youtube.com/results?search_query=${encodeURIComponent(mediaRecs.video.searchQuery)}` 
-        },
-        { 
-            ...activityRec, 
-            id: 'static-act' // Ensure ID uniqueness
+        {
+            id: 'gen-video',
+            type: 'video',
+            title: mediaRecs.video.title,
+            desc: mediaRecs.video.reason,
+            link: `https://www.youtube.com/results?search_query=${encodeURIComponent(mediaRecs.video.searchQuery)}`
         }
     ];
 
