@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { User, MoodRecord, ScreenName, EmotionId, Recommendation } from './types';
-import { EMOTIONS, MOCK_RECOMMENDATIONS, AI_EMPATHY_MESSAGES } from './constants';
+import { EMOTIONS, AI_EMPATHY_MESSAGES } from './constants';
 import { generateEmpathyMessage, generateWeeklyReview, generateMonthlyReview, generateMediaRecommendations } from './services/aiService';
 import { Card, Button, BottomNav, Header, ModalWrapper } from './components/Components';
 import { CalendarModal } from './components/CalendarModal';
+import { login, signup, fetchMoods, saveMood, deleteMood } from './services/api';
 import { 
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, 
   PieChart, Pie, LabelList
@@ -19,62 +20,39 @@ const LoginScreen: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
   const [view, setView] = useState<'landing' | 'login' | 'signup'>('landing');
   const [formData, setFormData] = useState({ id: '', password: '', nickname: '' });
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
     setError('');
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const { id, password, nickname } = formData;
-    
+
     if (!id || !password) {
         setError('아이디와 비밀번호를 모두 입력해주세요.');
         return;
     }
 
-    // Simple LocalStorage Auth
-    const usersStr = localStorage.getItem('todak_users');
-    const users: any[] = usersStr ? JSON.parse(usersStr) : [];
-
-    if (view === 'login') {
-        if (users.length === 0) {
-             setError('등록된 회원이 없습니다. 회원가입을 먼저 해주세요.');
-             return;
-        }
-        // Login Logic
-        const foundUser = users.find(u => u.id === id && u.password === password);
-        if (foundUser) {
-            onLogin({ id: foundUser.id, nickname: foundUser.nickname, startDate: foundUser.startDate });
+    try {
+        setIsSubmitting(true);
+        if (view === 'login') {
+            const loggedIn = await login(id, password);
+            onLogin(loggedIn);
         } else {
-            setError('아이디 또는 비밀번호가 올바르지 않습니다.');
+            if (!nickname) {
+                setError('닉네임을 입력해주세요.');
+                return;
+            }
+            const newUser = await signup(id, password, nickname);
+            onLogin(newUser);
         }
-    } else if (view === 'signup') {
-        if (!nickname) {
-            setError('닉네임을 입력해주세요.');
-            return;
-        }
-        // Signup Logic
-        if (users.some(u => u.id === id)) {
-            setError('이미 사용 중인 아이디입니다.');
-            return;
-        }
-        
-        const newUser = { 
-            id, 
-            password, 
-            nickname, 
-            startDate: new Date().toISOString() 
-        };
-        
-        users.push(newUser);
-        localStorage.setItem('todak_users', JSON.stringify(users));
-        onLogin({ id: newUser.id, nickname: newUser.nickname, startDate: newUser.startDate });
+    } catch (e: any) {
+        setError(e?.message || '로그인 처리 중 오류가 발생했어요.');
+    } finally {
+        setIsSubmitting(false);
     }
-  };
-
-  const handleGuestLogin = () => {
-      onLogin({ id: `guest_${Date.now()}`, nickname: '게스트', startDate: new Date().toISOString() });
   };
 
   const Background = () => (
@@ -105,9 +83,6 @@ const LoginScreen: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) =
               </Button>
           </div>
   
-          <button onClick={handleGuestLogin} className="mt-8 text-warmbrown/40 text-sm underline underline-offset-4 hover:text-olive transition-colors">
-              둘러보기
-          </button>
         </div>
       </div>
     );
@@ -313,10 +288,10 @@ const ServiceGuideOverlay: React.FC<{ onDismiss: () => void }> = ({ onDismiss })
 };
 
 // 4. Home Screen
-const HomeScreen: React.FC<{ 
-  user: User; 
-  todayMood?: MoodRecord; 
-  onSaveMood: (emoIds: EmotionId[], text: string, aiMsg?: string, recs?: Recommendation[]) => void;
+const HomeScreen: React.FC<{
+  user: User;
+  todayMood?: MoodRecord;
+  onSaveMood: (emoIds: EmotionId[], text: string, aiMsg?: string, recs?: Recommendation[]) => Promise<void>;
   onLogout: () => void;
 }> = ({ user, todayMood, onSaveMood, onLogout }) => {
   const [selectedEmos, setSelectedEmos] = useState<EmotionId[]>([]);
@@ -340,9 +315,9 @@ const HomeScreen: React.FC<{
     const allRecordedEmos = todayMood.emotionIds.map(id => EMOTIONS.find(e => e.id === id)).filter(Boolean);
     
     // Use stored recommendations or fallback to mock
-    const displayedRecs = todayMood.recommendations && todayMood.recommendations.length > 0 
-        ? todayMood.recommendations 
-        : MOCK_RECOMMENDATIONS[todayMood.emotionIds[0]] || [];
+    const displayedRecs = todayMood.recommendations && todayMood.recommendations.length > 0
+        ? todayMood.recommendations
+        : [];
 
     return (
       <div className="pb-28 space-y-6 animate-[fadeIn_0.5s_ease-out]">
@@ -437,16 +412,11 @@ const HomeScreen: React.FC<{
     const emotionLabels = selectedEmos.map(id => EMOTIONS.find(e => e.id === id)?.label).join(', ');
     const recsPromise = generateMediaRecommendations(emotionLabels, text);
 
-    // 3. Get one static activity (Keep existing logic)
-    const primaryId = selectedEmos[0];
-    const staticRecs = MOCK_RECOMMENDATIONS[primaryId] || [];
-    const activityRec = staticRecs.find(r => r.type === 'activity') || staticRecs[0];
-
     const [msg, mediaRecs] = await Promise.all([msgPromise, recsPromise]);
-    
+
     // Combine Recommendations
     const finalRecs: Recommendation[] = [
-        { 
+        {
             id: 'gen-music', 
             type: 'music', 
             title: mediaRecs.music.title, 
@@ -454,19 +424,15 @@ const HomeScreen: React.FC<{
             link: `https://open.spotify.com/search/${encodeURIComponent(mediaRecs.music.searchQuery)}` 
         },
         { 
-            id: 'gen-video', 
-            type: 'video', 
-            title: mediaRecs.video.title, 
-            desc: mediaRecs.video.reason, 
-            link: `https://www.youtube.com/results?search_query=${encodeURIComponent(mediaRecs.video.searchQuery)}` 
-        },
-        { 
-            ...activityRec, 
-            id: 'static-act' // Ensure ID uniqueness
+            id: 'gen-video',
+            type: 'video',
+            title: mediaRecs.video.title,
+            desc: mediaRecs.video.reason,
+            link: `https://www.youtube.com/results?search_query=${encodeURIComponent(mediaRecs.video.searchQuery)}`
         }
     ];
 
-    onSaveMood(selectedEmos, text, msg, finalRecs);
+    await onSaveMood(selectedEmos, text, msg, finalRecs);
     setIsLoadingAi(false);
   };
 
@@ -1088,6 +1054,8 @@ const App: React.FC = () => {
   const [moods, setMoods] = useState<Record<string, MoodRecord>>({});
   const [weeklyReview, setWeeklyReview] = useState<string | null>(null);
   const [monthlyReview, setMonthlyReview] = useState<string | null>(null);
+  const [isLoadingData, setIsLoadingData] = useState(false);
+  const [loadError, setLoadError] = useState('');
   
   // --- Shared Modal State ---
   const [modalDate, setModalDate] = useState<string | null>(null);
@@ -1103,25 +1071,22 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // Mock initial data
   useEffect(() => {
-    const dummyMoods: Record<string, MoodRecord> = {};
-    const today = new Date();
-    [1, 3, 4, 7, 10].forEach(diff => {
-        const d = subDays(today, diff);
-        const ds = format(d, 'yyyy-MM-dd');
-        const randomEmo = EMOTIONS[Math.floor(Math.random() * 8)]; // Top 8
-        dummyMoods[ds] = {
-            id: Math.random().toString(),
-            date: ds,
-            emotionIds: [randomEmo.id], // Converted to array
-            content: "잠시 쉬어가고 싶었던 날.",
-            aiMessage: "쉼표가 필요한 날이었군요. 잘했어요, 푹 쉬는 것도 중요해요.",
-            timestamp: d.getTime()
-        };
-    });
-    setMoods(dummyMoods);
-  }, []);
+    const load = async () => {
+        if (!user) return;
+        setIsLoadingData(true);
+        setLoadError('');
+        try {
+            const fetched = await fetchMoods(user.id);
+            setMoods(fetched);
+        } catch (e: any) {
+            setLoadError(e?.message || '기록을 불러오지 못했어요.');
+        } finally {
+            setIsLoadingData(false);
+        }
+    };
+    load();
+  }, [user]);
 
   // Check LocalStorage for guide preference on user state change
   useEffect(() => {
@@ -1148,34 +1113,26 @@ const App: React.FC = () => {
     }
   };
 
-  const handleSaveMood = (dateStr: string, emoIds: EmotionId[], text: string, aiMsg?: string, recs?: Recommendation[]) => {
-    setMoods(prev => {
-        const existing = prev[dateStr];
-        return {
-            ...prev,
-            [dateStr]: {
-                id: existing?.id || Math.random().toString(),
-                date: dateStr,
-                emotionIds: emoIds,
-                content: text,
-                aiMessage: aiMsg !== undefined ? aiMsg : existing?.aiMessage, // Preserve or update
-                recommendations: recs || existing?.recommendations, // Persist or preserve
-                timestamp: new Date().getTime()
-            }
-        };
-    });
+  const handleSaveMood = async (dateStr: string, emoIds: EmotionId[], text: string, aiMsg?: string, recs?: Recommendation[]) => {
+    if (!user) return;
+    const saved = await saveMood(user.id, dateStr, emoIds, text, aiMsg, recs);
+    setMoods(prev => ({ ...prev, [dateStr]: saved }));
     if (isSameDay(new Date(dateStr), new Date())) {
-        setWeeklyReview(null); 
+        setWeeklyReview(null);
         setMonthlyReview(null);
     }
   };
 
-  const handleSaveTodayMood = (emoIds: EmotionId[], text: string, aiMsg?: string, recs?: Recommendation[]) => {
+  const handleSaveTodayMood = async (emoIds: EmotionId[], text: string, aiMsg?: string, recs?: Recommendation[]) => {
       const todayStr = format(new Date(), 'yyyy-MM-dd');
-      handleSaveMood(todayStr, emoIds, text, aiMsg, recs);
+      await handleSaveMood(todayStr, emoIds, text, aiMsg, recs);
   };
 
-  const handleDeleteMood = (dateStr: string) => {
+  const handleDeleteMood = async (dateStr: string) => {
+      const record = moods[dateStr];
+      if (record) {
+          await deleteMood(record.id);
+      }
       setMoods(prev => {
           const newMoods = { ...prev };
           delete newMoods[dateStr];
@@ -1196,16 +1153,6 @@ const App: React.FC = () => {
   const closeDeleteModal = () => setIsDeleteModalOpen(false);
 
   const confirmDeleteAccount = () => {
-      // Remove from users list
-      if (user) {
-          const usersStr = localStorage.getItem('todak_users');
-          if (usersStr) {
-              let users = JSON.parse(usersStr);
-              users = users.filter((u: any) => u.id !== user.id);
-              localStorage.setItem('todak_users', JSON.stringify(users));
-          }
-      }
-
       setUser(null);
       localStorage.removeItem('todak_current_user');
       setMoods({});
@@ -1229,6 +1176,27 @@ const App: React.FC = () => {
   };
 
   if (!user) return <LoginScreen onLogin={handleLogin} />;
+
+  if (isLoadingData) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-beige text-warmbrown">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="animate-spin" />
+          <p className="text-sm">기록을 불러오고 있어요...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-beige text-center px-6 text-warmbrown">
+        <p className="font-bold mb-2">데이터를 불러오지 못했어요.</p>
+        <p className="text-sm text-warmbrown/70 mb-4">{loadError}</p>
+        <Button onClick={() => setUser(null)}>다시 로그인하기</Button>
+      </div>
+    );
+  }
 
   const renderScreen = () => {
     switch (currentTab) {

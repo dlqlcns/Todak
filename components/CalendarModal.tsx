@@ -10,8 +10,8 @@ interface CalendarModalProps {
   onClose: () => void;
   selectedDate: string;
   moodRecord?: MoodRecord;
-  onSave: (date: string, emotionIds: EmotionId[], content: string) => void;
-  onDelete: (date: string) => void;
+  onSave: (date: string, emotionIds: EmotionId[], content: string) => Promise<void>;
+  onDelete: (date: string) => Promise<void>;
 }
 
 export const CalendarModal: React.FC<CalendarModalProps> = ({ 
@@ -59,16 +59,16 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (selectedEmotionIds.length > 0) {
-      onSave(selectedDate, selectedEmotionIds, contentText);
+      await onSave(selectedDate, selectedEmotionIds, contentText);
       onClose();
     }
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (window.confirm('정말 이 기록을 지울까요?')) {
-      onDelete(selectedDate);
+      await onDelete(selectedDate);
       onClose();
     }
   };
