@@ -4,7 +4,7 @@ import { EMOTIONS, AI_EMPATHY_MESSAGES } from './constants';
 import { generateEmpathyMessage, generateWeeklyReview, generateMonthlyReview, generateMediaRecommendations } from './services/aiService';
 import { Card, Button, BottomNav, Header, ModalWrapper } from './components/Components';
 import { CalendarModal } from './components/CalendarModal';
-import { login, signup, fetchMoods, saveMood, deleteMood, fetchReminder, saveReminder } from './services/api';
+import { login, signup, fetchMoods, saveMood, deleteMood, fetchReminder, saveReminder, checkIdAvailability } from './services/api';
 import { 
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, 
   PieChart, Pie, LabelList
@@ -21,6 +21,8 @@ const LoginScreen: React.FC<{ onLogin: (user: User, isNew: boolean) => void }> =
   const [formData, setFormData] = useState({ id: '', password: '', confirmPassword: '', nickname: '' });
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [idCheckStatus, setIdCheckStatus] = useState<'idle' | 'checking' | 'available' | 'duplicate'>('idle');
+  const [idCheckMessage, setIdCheckMessage] = useState('');
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -32,6 +34,16 @@ const LoginScreen: React.FC<{ onLogin: (user: User, isNew: boolean) => void }> =
 
     if (!id || !password) {
         setError('아이디와 비밀번호를 모두 입력해주세요.');
+        return;
+    }
+
+    if (isSignup && idCheckStatus === 'duplicate') {
+        setError('이미 존재하는 아이디입니다');
+        return;
+    }
+
+    if (isSignup && password !== confirmPassword) {
+        setError('비밀번호가 일치하지 않습니다.');
         return;
     }
 
@@ -71,6 +83,46 @@ const LoginScreen: React.FC<{ onLogin: (user: User, isNew: boolean) => void }> =
         setIsSubmitting(false);
     }
   };
+
+  useEffect(() => {
+    if (view !== 'signup') {
+        setIdCheckStatus('idle');
+        setIdCheckMessage('');
+        return;
+    }
+
+    const trimmedId = formData.id.trim();
+    if (!trimmedId) {
+        setIdCheckStatus('idle');
+        setIdCheckMessage('');
+        return;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+        try {
+            setIdCheckStatus('checking');
+            const available = await checkIdAvailability(trimmedId);
+            if (cancelled) return;
+            if (available) {
+                setIdCheckStatus('available');
+                setIdCheckMessage('사용 가능한 아이디입니다.');
+            } else {
+                setIdCheckStatus('duplicate');
+                setIdCheckMessage('이미 존재하는 아이디입니다');
+            }
+        } catch (e) {
+            if (cancelled) return;
+            setIdCheckStatus('idle');
+            setIdCheckMessage('아이디 중복 확인 중 오류가 발생했어요.');
+        }
+    }, 300);
+
+    return () => {
+        cancelled = true;
+        clearTimeout(timer);
+    };
+  }, [formData.id, view]);
 
   const Background = () => (
     <>
@@ -129,14 +181,19 @@ const LoginScreen: React.FC<{ onLogin: (user: User, isNew: boolean) => void }> =
             <div className="space-y-4 animate-[slideUp_0.4s_0.2s_both]">
                 <div className="space-y-2">
                     <label className="text-xs font-bold text-warmbrown/60 ml-1">아이디</label>
-                    <input 
+                    <input
                         name="id"
-                        type="text" 
-                        placeholder="아이디를 입력해주세요" 
+                        type="text"
+                        placeholder="아이디를 입력해주세요"
                         value={formData.id}
                         onChange={handleChange}
                         className="w-full bg-white/60 px-5 py-4 rounded-2xl text-warmbrown placeholder:text-warmbrown/30 focus:outline-none focus:ring-2 focus:ring-olive/50 transition-all border border-transparent focus:bg-white"
                     />
+                    {isSignup && formData.id && idCheckStatus !== 'idle' && (
+                        <p className={`text-xs ml-1 ${idCheckStatus === 'duplicate' ? 'text-softorange' : 'text-olive'}`}>
+                            {idCheckMessage}
+                        </p>
+                    )}
                 </div>
                 
                 <div className="space-y-2">
@@ -151,19 +208,22 @@ const LoginScreen: React.FC<{ onLogin: (user: User, isNew: boolean) => void }> =
                     />
                 </div>
 
-                {isSignup && (
-                    <div className="space-y-2 animate-[fadeIn_0.3s]">
-                        <label className="text-xs font-bold text-warmbrown/60 ml-1">비밀번호 확인</label>
-                        <input
-                            name="confirmPassword"
-                            type="password"
-                            placeholder="비밀번호를 다시 입력해주세요"
-                            value={formData.confirmPassword}
-                            onChange={handleChange}
-                            className="w-full bg-white/60 px-5 py-4 rounded-2xl text-warmbrown placeholder:text-warmbrown/30 focus:outline-none focus:ring-2 focus:ring-olive/50 transition-all border border-transparent focus:bg-white"
-                        />
-                    </div>
-                )}
+            {isSignup && (
+                <div className="space-y-2 animate-[fadeIn_0.3s]">
+                    <label className="text-xs font-bold text-warmbrown/60 ml-1">비밀번호 확인</label>
+                    <input
+                        name="confirmPassword"
+                        type="password"
+                        placeholder="비밀번호를 다시 입력해주세요"
+                        value={formData.confirmPassword}
+                        onChange={handleChange}
+                        className="w-full bg-white/60 px-5 py-4 rounded-2xl text-warmbrown placeholder:text-warmbrown/30 focus:outline-none focus:ring-2 focus:ring-olive/50 transition-all border border-transparent focus:bg-white"
+                    />
+                    {formData.confirmPassword && formData.password !== formData.confirmPassword && (
+                        <p className="text-softorange text-xs ml-1">비밀번호가 일치하지 않습니다.</p>
+                    )}
+                </div>
+            )}
 
                 {isSignup && (
                     <div className="space-y-2 animate-[fadeIn_0.3s]">

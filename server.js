@@ -135,6 +135,31 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
+app.get('/api/check-id', async (req, res) => {
+  const loginId = req.query.loginId;
+
+  if (!loginId) {
+    return res.status(400).send('아이디를 입력해주세요.');
+  }
+
+  try {
+    const { data: existing, error } = await supabase
+      .from('users')
+      .select('id')
+      .eq('login_id', loginId)
+      .maybeSingle();
+
+    if (error && error.code !== 'PGRST116' && error.code !== 'PGRST204') {
+      throw error;
+    }
+
+    res.json({ available: !existing });
+  } catch (err) {
+    console.error('Check ID error:', err);
+    res.status(500).send('아이디 중복 확인 중 오류가 발생했어요.');
+  }
+});
+
 app.get('/api/moods', async (req, res) => {
   const userId = Number(req.query.userId);
   if (!userId) {

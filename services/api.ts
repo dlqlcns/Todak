@@ -71,3 +71,8 @@ export async function saveReminder(userId: number, reminderTime: string): Promis
   });
   return savedTime;
 }
+
+export async function checkIdAvailability(loginId: string): Promise<boolean> {
+  const { available } = await request<{ available: boolean }>(`/api/check-id?loginId=${encodeURIComponent(loginId)}`);
+  return available;
+}
