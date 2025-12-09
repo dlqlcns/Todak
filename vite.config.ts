@@ -7,6 +7,8 @@ export default defineConfig(({ mode }) => {
   return {
     base: './',
 
+    envPrefix: ['VITE_', 'GEMINI_'],
+
     server: {
       port: 3000,
       host: '0.0.0.0',
@@ -15,7 +17,6 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
 
     define: {
-      'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
     },
 

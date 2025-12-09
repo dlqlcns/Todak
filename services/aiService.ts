@@ -4,9 +4,6 @@ import { EmotionId, MoodRecord } from '../types';
 import { EMOTIONS } from '../constants';
 
 const apiKey = import.meta.env.GEMINI_API_KEY;
-const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
-
-const apiKey = import.meta.env.GEMINI_API_KEY;
 
 console.log('🔑 GEMINI_API_KEY 존재 여부:', !!apiKey); // true/false만 찍힘, 값은 안 노출됨
 
@@ -38,9 +35,13 @@ const buildEmpathyFallback = async (emotionIds: EmotionId[], userContent: string
         config: { temperature: 0.75 },
       });
 
-      const aiText = aiResponse.text?.trim();
-      if (aiText) {
-        return aiText;
+      const aiText = aiResponse.text?.trim?.() ?? aiResponse.text?.();
+      const normalizedText = typeof aiResponse.text === 'function'
+        ? aiResponse.text()?.trim()
+        : aiText;
+
+      if (normalizedText) {
+        return normalizedText;
       }
     } catch (fallbackError) {
       console.error('Fallback AI error:', fallbackError);
@@ -87,7 +88,9 @@ export const generateEmpathyMessage = async (emotionIds: EmotionId[], userConten
       },
     });
 
-    return response.text?.trim() || (await buildEmpathyFallback(emotionIds, userContent));
+    const text = typeof response.text === 'function' ? response.text() : response.text;
+
+    return text?.trim() || (await buildEmpathyFallback(emotionIds, userContent));
   } catch (error) {
     console.error("AI Service Error:", error);
     // Fallback
@@ -149,7 +152,8 @@ export const generateMediaRecommendations = async (emotionLabels: string, userCo
       }
     });
 
-    return JSON.parse(response.text);
+    const text = typeof response.text === 'function' ? response.text() : response.text;
+    return JSON.parse(text as string);
   } catch (error) {
     console.error("AI Recommendation Error:", error);
     return {
@@ -191,7 +195,8 @@ export const generateWeeklyReview = async (moods: MoodRecord[]): Promise<string>
             }
         });
 
-        return response.text || "이번 주는 다양한 감정들이 함께했네요. 힘든 날도 있었지만, 행복한 순간들도 빛났던 한 주였습니다. 다음 주도 당신의 속도대로 나아가길 응원해요! 🌈";
+        const text = typeof response.text === 'function' ? response.text() : response.text;
+        return text || "이번 주는 다양한 감정들이 함께했네요. 힘든 날도 있었지만, 행복한 순간들도 빛났던 한 주였습니다. 다음 주도 당신의 속도대로 나아가길 응원해요! 🌈";
     } catch (error) {
         console.error("AI Service Error:", error);
         return "이번 주는 다양한 감정들이 함께했네요. 힘든 날도 있었지만, 행복한 순간들도 빛났던 한 주였습니다. 다음 주도 당신의 속도대로 나아가길 응원해요! 🌈";
@@ -230,7 +235,8 @@ export const generateMonthlyReview = async (moods: MoodRecord[]): Promise<string
             }
         });
 
-        return response.text || "한 달 동안 정말 수고 많았어요. 다양한 감정의 파도 속에서도 자신을 잃지 않고 기록해준 당신이 멋져요. 다음 달도 당신의 색으로 가득 채워지길! ✨";
+        const text = typeof response.text === 'function' ? response.text() : response.text;
+        return text || "한 달 동안 정말 수고 많았어요. 다양한 감정의 파도 속에서도 자신을 잃지 않고 기록해준 당신이 멋져요. 다음 달도 당신의 색으로 가득 채워지길! ✨";
     } catch (error) {
         console.error("AI Service Error:", error);
         return "한 달 동안 정말 수고 많았어요. 다양한 감정의 파도 속에서도 자신을 잃지 않고 기록해준 당신이 멋져요. 다음 달도 당신의 색으로 가득 채워지길! ✨";
