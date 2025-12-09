@@ -40,27 +40,6 @@ const buildEmpathyFallback = async (emotionIds: EmotionId[], userContent: string
     }
   }
 
-  // 2) If the model is unavailable, synthesize a fluid line from the user text itself.
-  const safeContent = userContent?.trim() || '';
-  const slice = safeContent.length > 140 ? `${safeContent.slice(0, 130)}…` : safeContent;
-  const feelings = emotionIds
-    .map((id) => EMOTIONS.find((e) => e.id === id)?.label || id)
-    .filter(Boolean)
-    .join(', ');
-
-  const reflectiveIntro = feelings
-    ? `글 속에서 ${feelings} 같은 결이 은근히 스며 있더라.`
-    : '글을 읽으니 네가 오늘 어떤 온도로 숨 쉬었는지 느껴졌어.';
-
-  const echoFromContent = slice
-    ? `"${slice}" 이라고 적어준 이야기가 오래 머물러. 그 마음을 내가 조용히 함께 안고 있을게.`
-    : '조용히 건네준 마음 덕분에 너의 속도를 조금은 따라가 볼 수 있었어.';
-
-  const softEnding = '지금 그대로의 너를 충분히 괜찮다고 느껴도 돼. 나는 여기서 계속 들어줄게.';
-
-  return `${reflectiveIntro} ${echoFromContent} ${softEnding}`;
-};
-
 /**
  * Generates an empathy message using Gemini API.
  */
