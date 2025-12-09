@@ -23,6 +23,10 @@ export default defineConfig(({ mode }) => {
       alias: {
         '@': path.resolve(__dirname, '.'),
       }
+    },
+
+    preview: {
+      allowedHosts: ['todak-production-3b85.up.railway.app'],
     }
   };
 });
