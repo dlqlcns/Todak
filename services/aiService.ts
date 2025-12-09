@@ -28,17 +28,17 @@ export const generateEmpathyMessage = async (emotionIds: EmotionId[], userConten
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: `
-        The user is feeling a mix of these emotions: "${emotionLabels}".
-        User's journal content: "${userContent}".
-        
+        The user selected these emotions: "${emotionLabels}".
+        They also wrote this note in their journal: "${userContent}".
+
         Act as "Todak", a gentle, warm, and cozy mental wellness friend. NOT a doctor or a counselor.
         Your tone should be:
         - Soft, safe, and non-clinical.
         - Friendly Korean Banmal (casual but respectful).
         - Use emojis like 🌿, ✨, ☁️ to create a calm atmosphere.
-        
-        Provide a short, comforting message (max 2-3 sentences).
-        
+
+        Craft a short, comforting reply (max 2-3 sentences) that meaningfully weaves together BOTH the chosen emotions and the journal text.
+
         If the emotions are mixed (positive and negative), acknowledge the complexity ("It's okay to feel both happy and sad").
         If negative, offer a warm virtual hug.
         If positive, celebrate it softly.
