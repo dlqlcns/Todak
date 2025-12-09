@@ -1,10 +1,44 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 import { EmotionId, MoodRecord } from '../types';
-import { AI_EMPATHY_MESSAGES, EMOTIONS } from '../constants';
+import { EMOTIONS } from '../constants';
 
-const apiKey = import.meta.env.VITE_GOOGLE_GENAI_API_KEY;
+const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
+
+const buildEmpathyFallback = async (emotionIds: EmotionId[], userContent: string): Promise<string> => {
+  // 1) Try asking the model again with a lightweight prompt so even fallback text is AI-written.
+  if (ai) {
+    const emotionLabels = emotionIds
+      .map((id) => EMOTIONS.find((e) => e.id === id)?.label || id)
+      .join(', ');
+
+    const aiFallbackPrompt = `
+      역할: 너는 "Todak". 편안하고 따뜻한 친구처럼 한국어 반말로 말해줘.
+      감정 단서: ${emotionLabels || '없음'}
+      일기 단서: ${userContent || '(비어 있음)'}
+
+      조건:
+      - 위 단서를 너 스스로 해석해서 2~3문장 공감 메시지를 만들어.
+      - 템플릿을 채우지 말고, 읽은 느낌을 자연스럽게 풀어줘.
+      - 조용히 감정을 인정하고, 짧은 응원이나 휴식 제안을 덧붙여.
+    `;
+
+    try {
+      const aiResponse = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: aiFallbackPrompt,
+        config: { temperature: 0.75 },
+      });
+
+      const aiText = aiResponse.text?.trim();
+      if (aiText) {
+        return aiText;
+      }
+    } catch (fallbackError) {
+      console.error('Fallback AI error:', fallbackError);
+    }
+  }
 
 /**
  * Generates an empathy message using Gemini API.
@@ -12,48 +46,41 @@ const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 export const generateEmpathyMessage = async (emotionIds: EmotionId[], userContent: string): Promise<string> => {
   try {
     if (!ai) {
-      const primaryEmotionId = emotionIds[0];
-      return AI_EMPATHY_MESSAGES[primaryEmotionId] || AI_EMPATHY_MESSAGES.default;
+      return buildEmpathyFallback(emotionIds, userContent);
     }
 
-    // Get all emotion labels
-    const emotionLabels = emotionIds.map(id => {
-        const e = EMOTIONS.find(emo => emo.id === id);
-        return e ? e.label : id;
-    }).join(', ');
+    const emotionLabels = emotionIds
+      .map((id) => EMOTIONS.find((emo) => emo.id === id)?.label || id)
+      .join(', ');
 
-    // Use the first emotion for fallback logic if needed
-    const primaryEmotionId = emotionIds[0];
+    const prompt = `
+      역할: 너는 "Todak". 편안하고 따뜻하지만 상담사가 아닌 친구야.
+
+      입력된 감정(사용자 선택): ${emotionLabels || '없음'}
+      일기 내용: ${userContent || '(비어 있음)'}
+
+      규칙:
+      - 일기 텍스트와 감정을 너 스스로 해석해, 주어진 단어를 끼워 넣지 말 것.
+      - 사용자가 적은 구체적인 내용이나 분위기를 1~2개라도 언급해서 맥락을 살릴 것.
+      - 2~3문장, 부드러운 반말, 안전하고 따뜻한 어조. 필요하면 🌿, ✨ 같은 가벼운 이모지를 자연스럽게 사용.
+      - 매번 새로운 표현을 사용하고, 템플릿처럼 보이는 문장은 피할 것.
+      - 감정이 섞여 있으면 섞인 느낌을 친절히 짚어줘 (예: "기쁜데도 살짝 무거울 수 있지").
+      - 조언은 가볍게, 위로와 공감에 초점을 둘 것.
+    `;
 
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
-      contents: `
-        The user is feeling a mix of these emotions: "${emotionLabels}".
-        User's journal content: "${userContent}".
-        
-        Act as "Todak", a gentle, warm, and cozy mental wellness friend. NOT a doctor or a counselor.
-        Your tone should be:
-        - Soft, safe, and non-clinical.
-        - Friendly Korean Banmal (casual but respectful).
-        - Use emojis like 🌿, ✨, ☁️ to create a calm atmosphere.
-        
-        Provide a short, comforting message (max 2-3 sentences).
-        
-        If the emotions are mixed (positive and negative), acknowledge the complexity ("It's okay to feel both happy and sad").
-        If negative, offer a warm virtual hug.
-        If positive, celebrate it softly.
-      `,
+      contents: prompt,
       config: {
         temperature: 0.7,
-      }
+      },
     });
 
-    return response.text || AI_EMPATHY_MESSAGES[primaryEmotionId] || AI_EMPATHY_MESSAGES.default;
+    return response.text?.trim() || (await buildEmpathyFallback(emotionIds, userContent));
   } catch (error) {
     console.error("AI Service Error:", error);
     // Fallback
-    const primaryEmotionId = emotionIds[0];
-    return AI_EMPATHY_MESSAGES[primaryEmotionId] || AI_EMPATHY_MESSAGES.default;
+    return buildEmpathyFallback(emotionIds, userContent);
   }
 };
 
