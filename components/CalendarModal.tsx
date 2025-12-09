@@ -10,8 +10,8 @@ interface CalendarModalProps {
   onClose: () => void;
   selectedDate: string;
   moodRecord?: MoodRecord;
-  onSave: (date: string, emotionIds: EmotionId[], content: string) => void;
-  onDelete: (date: string) => void;
+  onSave: (date: string, emotionIds: EmotionId[], content: string) => Promise<void>;
+  onDelete: (date: string) => Promise<void>;
 }
 
 export const CalendarModal: React.FC<CalendarModalProps> = ({ 
@@ -20,6 +20,8 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
   const [isEditing, setIsEditing] = useState(false);
   const [selectedEmotionIds, setSelectedEmotionIds] = useState<EmotionId[]>([]);
   const [contentText, setContentText] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
 
   // Determine if the record is editable (only today)
   const todayStr = format(new Date(), 'yyyy-MM-dd');
@@ -59,17 +61,33 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (selectedEmotionIds.length > 0) {
-      onSave(selectedDate, selectedEmotionIds, contentText);
-      onClose();
+      setIsProcessing(true);
+      setActionError('');
+      try {
+        await onSave(selectedDate, selectedEmotionIds, contentText);
+        onClose();
+      } catch (error: any) {
+        setActionError(error?.message || '기록 저장에 실패했어요.');
+      } finally {
+        setIsProcessing(false);
+      }
     }
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (window.confirm('정말 이 기록을 지울까요?')) {
-      onDelete(selectedDate);
-      onClose();
+      setIsProcessing(true);
+      setActionError('');
+      try {
+        await onDelete(selectedDate);
+        onClose();
+      } catch (error: any) {
+        setActionError(error?.message || '기록 삭제에 실패했어요.');
+      } finally {
+        setIsProcessing(false);
+      }
     }
   };
 
@@ -168,10 +186,10 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
               />
             </div>
 
-            <Button fullWidth onClick={handleSave} disabled={selectedEmotionIds.length === 0}>
-              저장하기
-            </Button>
-          </div>
+              <Button fullWidth onClick={handleSave} disabled={selectedEmotionIds.length === 0 || isProcessing}>
+                {isProcessing ? '저장 중...' : '저장하기'}
+              </Button>
+            </div>
         ) : (
           // --- VIEW MODE ---
           <div className="space-y-6 animate-[fadeIn_0.3s]">
@@ -200,14 +218,14 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
 
             {/* Action Buttons (Only for Editable Dates) */}
             {isEditable ? (
-                <div className="flex gap-3 pt-2">
-                    <Button variant="secondary" className="flex-1 flex items-center justify-center gap-2" onClick={() => setIsEditing(true)}>
-                        <Edit2 size={16} /> 수정
-                    </Button>
-                    <Button variant="danger" className="flex-1 flex items-center justify-center gap-2" onClick={handleDelete}>
-                        <Trash2 size={16} /> 삭제
-                    </Button>
-                </div>
+                  <div className="flex gap-3 pt-2">
+                      <Button variant="secondary" className="flex-1 flex items-center justify-center gap-2" onClick={() => setIsEditing(true)} disabled={isProcessing}>
+                          <Edit2 size={16} /> 수정
+                      </Button>
+                      <Button variant="danger" className="flex-1 flex items-center justify-center gap-2" onClick={handleDelete} disabled={isProcessing}>
+                          <Trash2 size={16} /> 삭제
+                      </Button>
+                  </div>
             ) : (
                 <div className="pt-2 text-center">
                     <p className="text-xs text-warmbrown/40 flex items-center justify-center gap-1.5 bg-beige/50 py-2 rounded-full">
@@ -216,8 +234,11 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                 </div>
             )}
           </div>
-        )}
-      </div>
-    </ModalWrapper>
-  );
-};
+          )}
+          {actionError && (
+            <div className="pt-4 text-center text-softorange text-sm">{actionError}</div>
+          )}
+        </div>
+      </ModalWrapper>
+    );
+  };
