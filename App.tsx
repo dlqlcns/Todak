@@ -242,7 +242,7 @@ const ServiceGuideOverlay: React.FC<{ onDismiss: () => void }> = ({ onDismiss })
                         <rect width="100%" height="100%" fill="white" />
                         
                         {/* 1. Emotion Grid Cutout (Top) - y=182, height=190 (emotion grid height) */}
-                        <rect x="14" y="227" width="calc(100% - 28px)" height="300" rx="24" fill="black" />
+                        <rect x="14" y="222" width="calc(100% - 28px)" height="330" rx="24" fill="black" />
                         
                         {/* 2. Report Tab Cutout (Bottom Center) - left-39% aligned */}
                         <rect x="calc(50% - 28px)" y="calc(100% - 66px)" width="56" height="56" rx="20" fill="black" />
@@ -308,7 +308,7 @@ const ServiceGuideOverlay: React.FC<{ onDismiss: () => void }> = ({ onDismiss })
                 </div>
 
                 {/* Bottom: Touch to start - Moved under emotion grid */}
-                <div className="absolute top-[530px] w-full flex justify-center">
+                <div className="absolute top-[570px] w-full flex justify-center">
                     <span className="text-white/50 text-xs animate-pulse">
                         화면을 터치하면 시작합니다
                     </span>
