@@ -40,6 +40,10 @@ const buildEmpathyFallback = async (emotionIds: EmotionId[], userContent: string
     }
   }
 
+  // Non-AI fallback copy in case the Gemini API is unavailable.
+  return "네 마음을 잘 들었어. 요즘 참 애썼겠구나. 잠깐 숨 고르듯 쉬어도 괜찮아, 내가 여기서 너를 응원하고 있어. 🌿";
+};
+
 /**
  * Generates an empathy message using Gemini API.
  */
