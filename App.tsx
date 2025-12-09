@@ -236,7 +236,7 @@ const ServiceGuideOverlay: React.FC<{ onDismiss: () => void }> = ({ onDismiss })
                         <rect width="100%" height="100%" fill="white" />
                         
                         {/* 1. Emotion Grid Cutout (Top) - y=182, height=215 */}
-                        <rect x="14" y="182" width="calc(100% - 28px)" height="215" rx="24" fill="black" />
+                        <rect x="14" y="200" width="calc(100% - 28px)" height="215" rx="24" fill="black" />
                         
                         {/* 2. Report Tab Cutout (Bottom Center) - left-39% aligned */}
                         <rect x="calc(50% - 28px)" y="calc(100% - 66px)" width="56" height="56" rx="20" fill="black" />
