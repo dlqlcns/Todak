@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { User, MoodRecord, ScreenName, EmotionId, Recommendation } from './types';
-import { EMOTIONS, MOCK_RECOMMENDATIONS, AI_EMPATHY_MESSAGES } from './constants';
+import { EMOTIONS, AI_EMPATHY_MESSAGES } from './constants';
 import { generateEmpathyMessage, generateWeeklyReview, generateMonthlyReview, generateMediaRecommendations } from './services/aiService';
+import { deleteAccount, deleteMood as apiDeleteMood, fetchMoods, login, markGuideSeen, saveMood as apiSaveMood, signup } from './services/api';
 import { Card, Button, BottomNav, Header, ModalWrapper } from './components/Components';
 import { CalendarModal } from './components/CalendarModal';
 import { 
@@ -9,72 +10,59 @@ import {
   PieChart, Pie, LabelList
 } from 'recharts';
 import { ChevronDown, ChevronLeft, ChevronRight, Play, BookOpen, Music, LogOut, Loader2, Sparkles, CloudSun, Calendar as CalendarIcon, Check, ExternalLink } from 'lucide-react';
-import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, subDays, startOfMonth, endOfMonth, getDay, addMonths, subMonths, addWeeks, subWeeks, getWeekOfMonth } from 'date-fns';
+import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, startOfMonth, endOfMonth, getDay, addMonths, subMonths, addWeeks, subWeeks, getWeekOfMonth } from 'date-fns';
 import { ko } from 'date-fns/locale';
 
 // --- Screens ---
 
 // 1. Onboarding / Login (Updated with Landing -> Login/Signup Flow)
-const LoginScreen: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
+const LoginScreen: React.FC<{ onLogin: (id: string, password: string) => Promise<void>; onSignup: (id: string, password: string, nickname: string) => Promise<void>; onGuest: () => Promise<void>; }> = ({ onLogin, onSignup, onGuest }) => {
   const [view, setView] = useState<'landing' | 'login' | 'signup'>('landing');
   const [formData, setFormData] = useState({ id: '', password: '', nickname: '' });
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
     setError('');
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const { id, password, nickname } = formData;
-    
+
     if (!id || !password) {
         setError('아이디와 비밀번호를 모두 입력해주세요.');
         return;
     }
 
-    // Simple LocalStorage Auth
-    const usersStr = localStorage.getItem('todak_users');
-    const users: any[] = usersStr ? JSON.parse(usersStr) : [];
-
-    if (view === 'login') {
-        if (users.length === 0) {
-             setError('등록된 회원이 없습니다. 회원가입을 먼저 해주세요.');
-             return;
-        }
-        // Login Logic
-        const foundUser = users.find(u => u.id === id && u.password === password);
-        if (foundUser) {
-            onLogin({ id: foundUser.id, nickname: foundUser.nickname, startDate: foundUser.startDate });
+    try {
+        setLoading(true);
+        if (view === 'login') {
+            await onLogin(id, password);
         } else {
-            setError('아이디 또는 비밀번호가 올바르지 않습니다.');
+            if (!nickname) {
+                setError('닉네임을 입력해주세요.');
+                setLoading(false);
+                return;
+            }
+            await onSignup(id, password, nickname);
         }
-    } else if (view === 'signup') {
-        if (!nickname) {
-            setError('닉네임을 입력해주세요.');
-            return;
-        }
-        // Signup Logic
-        if (users.some(u => u.id === id)) {
-            setError('이미 사용 중인 아이디입니다.');
-            return;
-        }
-        
-        const newUser = { 
-            id, 
-            password, 
-            nickname, 
-            startDate: new Date().toISOString() 
-        };
-        
-        users.push(newUser);
-        localStorage.setItem('todak_users', JSON.stringify(users));
-        onLogin({ id: newUser.id, nickname: newUser.nickname, startDate: newUser.startDate });
+    } catch (err: any) {
+        setError(err?.message || '요청을 처리할 수 없습니다.');
+    } finally {
+        setLoading(false);
     }
   };
 
-  const handleGuestLogin = () => {
-      onLogin({ id: `guest_${Date.now()}`, nickname: '게스트', startDate: new Date().toISOString() });
+  const handleGuestLogin = async () => {
+      try {
+        setLoading(true);
+        await onGuest();
+      } catch (err: any) {
+        setError(err?.message || '게스트 로그인에 실패했습니다.');
+      } finally {
+        setLoading(false);
+      }
   };
 
   const Background = () => (
@@ -214,14 +202,11 @@ const OnboardingScreen: React.FC<{ name: string; onFinish: () => void }> = ({ na
 };
 
 // 3. Service Guide Overlay (Coach Mark)
-const ServiceGuideOverlay: React.FC<{ onDismiss: () => void }> = ({ onDismiss }) => {
+const ServiceGuideOverlay: React.FC<{ onDismiss: (remember?: boolean) => void }> = ({ onDismiss }) => {
     const [doNotShow, setDoNotShow] = useState(false);
 
     const handleDismiss = () => {
-        if (doNotShow) {
-            localStorage.setItem('todak_guide_seen', 'true');
-        }
-        onDismiss();
+        onDismiss(doNotShow);
     };
 
     return (
@@ -314,9 +299,9 @@ const ServiceGuideOverlay: React.FC<{ onDismiss: () => void }> = ({ onDismiss })
 
 // 4. Home Screen
 const HomeScreen: React.FC<{ 
-  user: User; 
-  todayMood?: MoodRecord; 
-  onSaveMood: (emoIds: EmotionId[], text: string, aiMsg?: string, recs?: Recommendation[]) => void;
+  user: User;
+  todayMood?: MoodRecord;
+  onSaveMood: (emoIds: EmotionId[], text: string, aiMsg?: string, recs?: Recommendation[]) => Promise<void>;
   onLogout: () => void;
 }> = ({ user, todayMood, onSaveMood, onLogout }) => {
   const [selectedEmos, setSelectedEmos] = useState<EmotionId[]>([]);
@@ -339,10 +324,9 @@ const HomeScreen: React.FC<{
     const primaryEmo = EMOTIONS.find(e => e.id === todayMood.emotionIds[0])!;
     const allRecordedEmos = todayMood.emotionIds.map(id => EMOTIONS.find(e => e.id === id)).filter(Boolean);
     
-    // Use stored recommendations or fallback to mock
-    const displayedRecs = todayMood.recommendations && todayMood.recommendations.length > 0 
-        ? todayMood.recommendations 
-        : MOCK_RECOMMENDATIONS[todayMood.emotionIds[0]] || [];
+    const displayedRecs = todayMood.recommendations && todayMood.recommendations.length > 0
+        ? todayMood.recommendations
+        : [];
 
     return (
       <div className="pb-28 space-y-6 animate-[fadeIn_0.5s_ease-out]">
@@ -437,37 +421,30 @@ const HomeScreen: React.FC<{
     const emotionLabels = selectedEmos.map(id => EMOTIONS.find(e => e.id === id)?.label).join(', ');
     const recsPromise = generateMediaRecommendations(emotionLabels, text);
 
-    // 3. Get one static activity (Keep existing logic)
-    const primaryId = selectedEmos[0];
-    const staticRecs = MOCK_RECOMMENDATIONS[primaryId] || [];
-    const activityRec = staticRecs.find(r => r.type === 'activity') || staticRecs[0];
+    try {
+        const [msg, mediaRecs] = await Promise.all([msgPromise, recsPromise]);
 
-    const [msg, mediaRecs] = await Promise.all([msgPromise, recsPromise]);
-    
-    // Combine Recommendations
-    const finalRecs: Recommendation[] = [
-        { 
-            id: 'gen-music', 
-            type: 'music', 
-            title: mediaRecs.music.title, 
-            desc: mediaRecs.music.reason, 
-            link: `https://open.spotify.com/search/${encodeURIComponent(mediaRecs.music.searchQuery)}` 
-        },
-        { 
-            id: 'gen-video', 
-            type: 'video', 
-            title: mediaRecs.video.title, 
-            desc: mediaRecs.video.reason, 
-            link: `https://www.youtube.com/results?search_query=${encodeURIComponent(mediaRecs.video.searchQuery)}` 
-        },
-        { 
-            ...activityRec, 
-            id: 'static-act' // Ensure ID uniqueness
-        }
-    ];
+        const finalRecs: Recommendation[] = [
+            {
+                id: 'gen-music',
+                type: 'music',
+                title: mediaRecs.music.title,
+                desc: mediaRecs.music.reason,
+                link: `https://open.spotify.com/search/${encodeURIComponent(mediaRecs.music.searchQuery)}`
+            },
+            {
+                id: 'gen-video',
+                type: 'video',
+                title: mediaRecs.video.title,
+                desc: mediaRecs.video.reason,
+                link: `https://www.youtube.com/results?search_query=${encodeURIComponent(mediaRecs.video.searchQuery)}`
+            }
+        ];
 
-    onSaveMood(selectedEmos, text, msg, finalRecs);
-    setIsLoadingAi(false);
+        await onSaveMood(selectedEmos, text, msg, finalRecs);
+    } finally {
+        setIsLoadingAi(false);
+    }
   };
 
   if (isLoadingAi) {
@@ -1094,88 +1071,92 @@ const App: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
-  // Restore User Session
-  useEffect(() => {
-    const savedUser = localStorage.getItem('todak_current_user');
-    if (savedUser) {
-        setUser(JSON.parse(savedUser));
-        setShowOnboarding(false); // Skip onboarding on auto-login
+  const hydrateMoods = async (userId: string) => {
+    try {
+        const serverMoods = await fetchMoods(userId);
+        const mapped = serverMoods.reduce((acc, mood) => {
+            acc[mood.date] = mood;
+            return acc;
+        }, {} as Record<string, MoodRecord>);
+        setMoods(mapped);
+    } catch (err: any) {
+        console.error(err);
     }
-  }, []);
+  };
 
-  // Mock initial data
-  useEffect(() => {
-    const dummyMoods: Record<string, MoodRecord> = {};
-    const today = new Date();
-    [1, 3, 4, 7, 10].forEach(diff => {
-        const d = subDays(today, diff);
-        const ds = format(d, 'yyyy-MM-dd');
-        const randomEmo = EMOTIONS[Math.floor(Math.random() * 8)]; // Top 8
-        dummyMoods[ds] = {
-            id: Math.random().toString(),
-            date: ds,
-            emotionIds: [randomEmo.id], // Converted to array
-            content: "잠시 쉬어가고 싶었던 날.",
-            aiMessage: "쉼표가 필요한 날이었군요. 잘했어요, 푹 쉬는 것도 중요해요.",
-            timestamp: d.getTime()
-        };
-    });
-    setMoods(dummyMoods);
-  }, []);
-
-  // Check LocalStorage for guide preference on user state change
-  useEffect(() => {
-      if (user && !showOnboarding) {
-          const hasSeen = localStorage.getItem('todak_guide_seen');
-          if (!hasSeen) {
-              setShowGuide(true);
-          }
-      }
-  }, [user, showOnboarding]);
-
-  const handleLogin = (userObj: User) => {
-    setUser(userObj);
-    localStorage.setItem('todak_current_user', JSON.stringify(userObj));
+  const handleAuthSuccess = async (authUser: any) => {
+    const normalizedUser: User = {
+        id: authUser.id,
+        nickname: authUser.nickname,
+        startDate: typeof authUser.startDate === 'string' ? authUser.startDate : new Date(authUser.startDate).toISOString(),
+        hasSeenGuide: authUser.hasSeenGuide,
+    };
+    setUser(normalizedUser);
     setShowOnboarding(true);
+    setShowGuide(!authUser.hasSeenGuide);
+    await hydrateMoods(authUser.id);
+  };
+
+  const handleLogin = async (id: string, password: string) => {
+    const authUser = await login(id, password);
+    await handleAuthSuccess(authUser);
+  };
+
+  const handleSignup = async (id: string, password: string, nickname: string) => {
+    const authUser = await signup(id, password, nickname);
+    await handleAuthSuccess(authUser);
+  };
+
+  const handleGuestLogin = async () => {
+    const guestId = `guest_${Date.now()}`;
+    try {
+        const authUser = await signup(guestId, 'guest', '게스트');
+        await handleAuthSuccess(authUser);
+    } catch (err) {
+        // If guest exists, try login instead
+        const authUser = await login(guestId, 'guest');
+        await handleAuthSuccess(authUser);
+    }
   };
 
   const handleFinishOnboarding = () => {
     setShowOnboarding(false);
-    // Guide logic is now handled in the useEffect above or explicit check
-    const hasSeen = localStorage.getItem('todak_guide_seen');
-    if (!hasSeen) {
+    if (user && !user.hasSeenGuide) {
         setShowGuide(true);
     }
   };
 
-  const handleSaveMood = (dateStr: string, emoIds: EmotionId[], text: string, aiMsg?: string, recs?: Recommendation[]) => {
-    setMoods(prev => {
-        const existing = prev[dateStr];
-        return {
-            ...prev,
-            [dateStr]: {
-                id: existing?.id || Math.random().toString(),
-                date: dateStr,
-                emotionIds: emoIds,
-                content: text,
-                aiMessage: aiMsg !== undefined ? aiMsg : existing?.aiMessage, // Preserve or update
-                recommendations: recs || existing?.recommendations, // Persist or preserve
-                timestamp: new Date().getTime()
-            }
-        };
+  const handleSaveMood = async (dateStr: string, emoIds: EmotionId[], text: string, aiMsg?: string, recs?: Recommendation[]) => {
+    if (!user) return;
+    const saved = await apiSaveMood(user.id, {
+        id: moods[dateStr]?.id,
+        date: dateStr,
+        emotionIds: emoIds,
+        content: text,
+        aiMessage: aiMsg,
+        recommendations: recs,
+        timestamp: Date.now(),
     });
+
+    setMoods(prev => ({
+        ...prev,
+        [dateStr]: saved,
+    }));
+
     if (isSameDay(new Date(dateStr), new Date())) {
-        setWeeklyReview(null); 
+        setWeeklyReview(null);
         setMonthlyReview(null);
     }
   };
 
-  const handleSaveTodayMood = (emoIds: EmotionId[], text: string, aiMsg?: string, recs?: Recommendation[]) => {
+  const handleSaveTodayMood = async (emoIds: EmotionId[], text: string, aiMsg?: string, recs?: Recommendation[]) => {
       const todayStr = format(new Date(), 'yyyy-MM-dd');
-      handleSaveMood(todayStr, emoIds, text, aiMsg, recs);
+      await handleSaveMood(todayStr, emoIds, text, aiMsg, recs);
   };
 
-  const handleDeleteMood = (dateStr: string) => {
+  const handleDeleteMood = async (dateStr: string) => {
+      if (!user || !moods[dateStr]) return;
+      await apiDeleteMood(user.id, moods[dateStr].id);
       setMoods(prev => {
           const newMoods = { ...prev };
           delete newMoods[dateStr];
@@ -1187,35 +1168,37 @@ const App: React.FC = () => {
 
   const handleLogout = () => {
       setUser(null);
-      localStorage.removeItem('todak_current_user');
-      setCurrentTab('home'); // Reset tab
+      setMoods({});
+      setCurrentTab('home');
       setShowGuide(false);
+      setWeeklyReview(null);
+      setMonthlyReview(null);
+  };
+
+  const handleDismissGuide = async (remember?: boolean) => {
+      setShowGuide(false);
+      if (remember && user) {
+          const updated = await markGuideSeen(user.id);
+          setUser(prev => prev ? { ...prev, hasSeenGuide: updated.hasSeenGuide } : prev);
+      }
   };
 
   const openDeleteModal = () => setIsDeleteModalOpen(true);
   const closeDeleteModal = () => setIsDeleteModalOpen(false);
 
-  const confirmDeleteAccount = () => {
-      // Remove from users list
+  const confirmDeleteAccount = async () => {
       if (user) {
-          const usersStr = localStorage.getItem('todak_users');
-          if (usersStr) {
-              let users = JSON.parse(usersStr);
-              users = users.filter((u: any) => u.id !== user.id);
-              localStorage.setItem('todak_users', JSON.stringify(users));
-          }
+          await deleteAccount(user.id);
       }
 
       setUser(null);
-      localStorage.removeItem('todak_current_user');
       setMoods({});
       setWeeklyReview(null);
       setMonthlyReview(null);
       setCurrentTab('home');
       setShowGuide(false);
       setIsDeleteModalOpen(false);
-      localStorage.removeItem('todak_guide_seen'); // Optional: Reset guide on account delete
-  }
+  };
 
   // Shared modal handler
   const handleOpenModal = (dateStr: string) => {
@@ -1228,7 +1211,7 @@ const App: React.FC = () => {
     setCurrentTab('home');
   };
 
-  if (!user) return <LoginScreen onLogin={handleLogin} />;
+  if (!user) return <LoginScreen onLogin={handleLogin} onSignup={handleSignup} onGuest={handleGuestLogin} />;
 
   const renderScreen = () => {
     switch (currentTab) {
@@ -1282,7 +1265,7 @@ const App: React.FC = () => {
             <BottomNav current={currentTab} onNavigate={setCurrentTab} />
             
             {/* Coach Mark Overlay */}
-            {showGuide && <ServiceGuideOverlay onDismiss={() => setShowGuide(false)} />}
+            {showGuide && <ServiceGuideOverlay onDismiss={handleDismissGuide} />}
 
             {/* Global Modal - Calendar/Report Details */}
             {modalDate && (

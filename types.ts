@@ -21,7 +21,7 @@ export interface Recommendation {
 }
 
 export interface MoodRecord {
-  id: string; // uuid or timestamp
+  id: number; // database identifier
   date: string; // YYYY-MM-DD
   emotionIds: EmotionId[]; // Changed to array for multi-selection
   content: string;
@@ -34,6 +34,7 @@ export interface User {
   id: string; // unique user id
   nickname: string;
   startDate: string; // ISO Date
+  hasSeenGuide?: boolean;
 }
 
 export type ScreenName = 'home' | 'calendar' | 'report' | 'notification' | 'profile';
