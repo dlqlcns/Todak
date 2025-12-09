@@ -18,7 +18,7 @@ import { ko } from 'date-fns/locale';
 // 1. Onboarding / Login (Updated with Landing -> Login/Signup Flow)
 const LoginScreen: React.FC<{ onLogin: (user: User, isNew: boolean) => void }> = ({ onLogin }) => {
   const [view, setView] = useState<'landing' | 'login' | 'signup'>('landing');
-  const [formData, setFormData] = useState({ id: '', password: '', nickname: '' });
+  const [formData, setFormData] = useState({ id: '', password: '', confirmPassword: '', nickname: '' });
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -28,7 +28,7 @@ const LoginScreen: React.FC<{ onLogin: (user: User, isNew: boolean) => void }> =
   };
 
   const handleSubmit = async () => {
-    const { id, password, nickname } = formData;
+    const { id, password, confirmPassword, nickname } = formData;
 
     if (!id || !password) {
         setError('아이디와 비밀번호를 모두 입력해주세요.');
@@ -45,11 +45,28 @@ const LoginScreen: React.FC<{ onLogin: (user: User, isNew: boolean) => void }> =
                 setError('닉네임을 입력해주세요.');
                 return;
             }
+            if (password !== confirmPassword) {
+                setError('비밀번호가 일치하지 않습니다.');
+                return;
+            }
             const newUser = await signup(id, password, nickname);
             onLogin(newUser, true);
         }
     } catch (e: any) {
-        setError(e?.message || '로그인 처리 중 오류가 발생했어요.');
+        const message = e?.message || '';
+        if (view === 'login') {
+            if (message.includes('존재하지 않는 아이디') || message.includes('비밀번호가 올바르지 않아요.')) {
+                setError('아이디 또는 비밀번호를 확인하세요');
+            } else {
+                setError(message || '로그인 처리 중 오류가 발생했어요.');
+            }
+        } else {
+            if (message.includes('이미 사용 중인 아이디')) {
+                setError('이미 존재하는 아이디입니다');
+            } else {
+                setError(message || '회원가입 처리 중 오류가 발생했어요.');
+            }
+        }
     } finally {
         setIsSubmitting(false);
     }
@@ -96,7 +113,7 @@ const LoginScreen: React.FC<{ onLogin: (user: User, isNew: boolean) => void }> =
         <Background />
         <div className="relative z-10 w-full max-w-sm">
             <button 
-                onClick={() => { setView('landing'); setError(''); setFormData({id:'', password:'', nickname:''}); }}
+                onClick={() => { setView('landing'); setError(''); setFormData({id:'', password:'', confirmPassword:'', nickname:''}); }}
                 className="mb-8 w-10 h-10 rounded-full bg-white/50 hover:bg-white flex items-center justify-center text-warmbrown/60 hover:text-warmbrown transition-colors shadow-sm"
             >
                 <ChevronLeft size={24} />
@@ -124,15 +141,29 @@ const LoginScreen: React.FC<{ onLogin: (user: User, isNew: boolean) => void }> =
                 
                 <div className="space-y-2">
                     <label className="text-xs font-bold text-warmbrown/60 ml-1">비밀번호</label>
-                    <input 
+                    <input
                         name="password"
-                        type="password" 
-                        placeholder="비밀번호를 입력해주세요" 
+                        type="password"
+                        placeholder="비밀번호를 입력해주세요"
                         value={formData.password}
                         onChange={handleChange}
                         className="w-full bg-white/60 px-5 py-4 rounded-2xl text-warmbrown placeholder:text-warmbrown/30 focus:outline-none focus:ring-2 focus:ring-olive/50 transition-all border border-transparent focus:bg-white"
                     />
                 </div>
+
+                {isSignup && (
+                    <div className="space-y-2 animate-[fadeIn_0.3s]">
+                        <label className="text-xs font-bold text-warmbrown/60 ml-1">비밀번호 확인</label>
+                        <input
+                            name="confirmPassword"
+                            type="password"
+                            placeholder="비밀번호를 다시 입력해주세요"
+                            value={formData.confirmPassword}
+                            onChange={handleChange}
+                            className="w-full bg-white/60 px-5 py-4 rounded-2xl text-warmbrown placeholder:text-warmbrown/30 focus:outline-none focus:ring-2 focus:ring-olive/50 transition-all border border-transparent focus:bg-white"
+                        />
+                    </div>
+                )}
 
                 {isSignup && (
                     <div className="space-y-2 animate-[fadeIn_0.3s]">
@@ -210,8 +241,8 @@ const ServiceGuideOverlay: React.FC<{ onDismiss: () => void }> = ({ onDismiss })
                     <mask id="guide-mask">
                         <rect width="100%" height="100%" fill="white" />
                         
-                        {/* 1. Emotion Grid Cutout (Top) - y=182, height=215 */}
-                        <rect x="14" y="182" width="calc(100% - 28px)" height="215" rx="24" fill="black" />
+                        {/* 1. Emotion Grid Cutout (Top) - y=182, height=190 (emotion grid height) */}
+                        <rect x="14" y="220" width="calc(100% - 28px)" height="340" rx="24" fill="black" />
                         
                         {/* 2. Report Tab Cutout (Bottom Center) - left-39% aligned */}
                         <rect x="calc(50% - 28px)" y="calc(100% - 66px)" width="56" height="56" rx="20" fill="black" />
@@ -277,7 +308,7 @@ const ServiceGuideOverlay: React.FC<{ onDismiss: () => void }> = ({ onDismiss })
                 </div>
 
                 {/* Bottom: Touch to start - Moved under emotion grid */}
-                <div className="absolute top-[410px] w-full flex justify-center">
+                <div className="absolute top-[570px] w-full flex justify-center">
                     <span className="text-white/50 text-xs animate-pulse">
                         화면을 터치하면 시작합니다
                     </span>
@@ -1134,6 +1165,7 @@ const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
+  const [isNewSignup, setIsNewSignup] = useState(false);
   const [currentTab, setCurrentTab] = useState<ScreenName>('home');
   const [moods, setMoods] = useState<Record<string, MoodRecord>>({});
   const [weeklyReview, setWeeklyReview] = useState<string | null>(null);
@@ -1152,6 +1184,8 @@ const App: React.FC = () => {
     if (savedUser) {
         setUser(JSON.parse(savedUser));
         setShowOnboarding(false); // Skip onboarding on auto-login
+        setIsNewSignup(false);
+        setShowGuide(false);
     }
   }, []);
 
@@ -1172,28 +1206,25 @@ const App: React.FC = () => {
     load();
   }, [user]);
 
-  // Check LocalStorage for guide preference on user state change
-  useEffect(() => {
-      if (user && !showOnboarding) {
-          const hasSeen = localStorage.getItem('todak_guide_seen');
-          if (!hasSeen) {
-              setShowGuide(true);
-          }
-      }
-  }, [user, showOnboarding]);
-
   const handleLogin = (userObj: User, isNew: boolean) => {
     setUser(userObj);
+    setIsNewSignup(isNew);
     localStorage.setItem('todak_current_user', JSON.stringify(userObj));
     setShowOnboarding(isNew);
+    if (isNew) {
+        localStorage.removeItem('todak_guide_seen');
+        setShowGuide(true);
+    } else {
+        localStorage.setItem('todak_guide_seen', 'true');
+        setShowGuide(false);
+    }
   };
 
   const handleFinishOnboarding = () => {
     setShowOnboarding(false);
-    // Guide logic is now handled in the useEffect above or explicit check
-    const hasSeen = localStorage.getItem('todak_guide_seen');
-    if (!hasSeen) {
-        setShowGuide(true);
+    setShowGuide(isNewSignup);
+    if (!isNewSignup) {
+        localStorage.setItem('todak_guide_seen', 'true');
     }
   };
 
@@ -1231,6 +1262,7 @@ const App: React.FC = () => {
       localStorage.removeItem('todak_current_user');
       setCurrentTab('home'); // Reset tab
       setShowGuide(false);
+      setIsNewSignup(false);
   };
 
   const openDeleteModal = () => setIsDeleteModalOpen(true);
@@ -1244,6 +1276,7 @@ const App: React.FC = () => {
       setMonthlyReview(null);
       setCurrentTab('home');
       setShowGuide(false);
+      setIsNewSignup(false);
       setIsDeleteModalOpen(false);
       localStorage.removeItem('todak_guide_seen'); // Optional: Reset guide on account delete
   }
