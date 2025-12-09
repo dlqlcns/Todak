@@ -3,7 +3,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { EmotionId, MoodRecord } from '../types';
 import { EMOTIONS } from '../constants';
 
-const apiKey = import.meta.env.VITE_GOOGLE_GENAI_API_KEY;
+const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
 const buildEmpathyFallback = async (emotionIds: EmotionId[], userContent: string): Promise<string> => {
