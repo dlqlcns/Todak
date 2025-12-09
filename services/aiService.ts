@@ -6,6 +6,13 @@ import { EMOTIONS } from '../constants';
 const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
+const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+
+console.log('🔑 VITE_GEMINI_API_KEY 존재 여부:', !!apiKey); // true/false만 찍힘, 값은 안 노출됨
+
+const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
+
+
 const buildEmpathyFallback = async (emotionIds: EmotionId[], userContent: string): Promise<string> => {
   // 1) Try asking the model again with a lightweight prompt so even fallback text is AI-written.
   if (ai) {
