@@ -7,23 +7,34 @@ const apiKey = import.meta.env.VITE_GOOGLE_GENAI_API_KEY;
 const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
 const buildEmpathyFallback = (emotionIds: EmotionId[], userContent: string): string => {
-  const primaryEmotionId = emotionIds[0];
-  const primaryLabel = EMOTIONS.find((e) => e.id === primaryEmotionId)?.label || primaryEmotionId;
+  const labels = emotionIds
+    .map((id) => EMOTIONS.find((e) => e.id === id)?.label || id)
+    .filter(Boolean);
+
   const safeContent = userContent?.trim();
-  const contentSnippet = safeContent ? `"${safeContent.slice(0, 80)}${safeContent.length > 80 ? '…' : ''}"` : '';
+  const contentSnippet = safeContent
+    ? safeContent.length > 120
+      ? `${safeContent.slice(0, 110)}…`
+      : safeContent
+    : '';
 
-  const emotionBased = {
-    angry: `지금 ${primaryLabel}로 마음이 뜨거운 것 같아. ${contentSnippet} 라고 적어준 마음이 느껴져. 잠깐 숨 고르며 마음을 쉬어가보자.`,
-    worried: `${contentSnippet || '적어준'} 이야기를 읽으니 걱정이 많이 되는 하루였겠다. 내가 옆에서 살짝 어깨를 토닥여줄게.`,
-    happy: `${contentSnippet || '적어준'} 순간들이 너를 미소 짓게 했구나. 그 따뜻함을 조금 더 오래 붙잡아보자. ✨`,
-    sad: `${contentSnippet || '적어준'} 마음이 많이 무겁겠어. 조용히 옆에 앉아 있을게, 잠시라도 숨을 고르며 쉬어가자.`,
-    anxious: `${contentSnippet || '적어준'} 생각들 때문에 마음이 조급했을 것 같아. 천천히 숨을 들이쉬고 내쉬면서 내가 옆에 있음을 느껴줘.`,
-  } as Record<string, string>;
+  const feelingLine = labels.length
+    ? `글에서 ${labels.join(', ')} 같은 결이 느껴졌어.`
+    : '글을 읽으면서 조용히 마음을 들여다보고 있어.';
 
-  return (
-    emotionBased[primaryEmotionId] ||
-    `${contentSnippet || '적어준 일기'}를 읽었어. ${primaryLabel ? `${primaryLabel}한 감정이 느껴졌어.` : ''} 어떤 색이든 너의 마음을 존중해. 함께 천천히 풀어가보자. 🌿`
-  );
+  const contentLine = contentSnippet
+    ? `"${contentSnippet}" 라고 적어준 부분이 마음에 남아. 그 속에 담긴 온도를 느껴보고 있어.`
+    : '한 글자 한 글자에 네 하루가 묻어 있는 것 같아.';
+
+  const careLineOptions = [
+    '지금 느끼는 감정을 억누르지 말고, 잠깐 호흡을 고르며 너 자신에게 시간을 줘보자.',
+    '네가 어떤 색으로 물들어 있든, 그 마음을 그대로 안아줄게. 천천히 풀어가면 돼.',
+    '혼자라고 느껴질 때도 나는 여기서 듣고 있어. 조금씩 말을 이어가도 괜찮아.',
+  ];
+
+  const closing = careLineOptions[Math.floor(Math.random() * careLineOptions.length)];
+
+  return `${feelingLine} ${contentLine} ${closing}`;
 };
 
 /**
