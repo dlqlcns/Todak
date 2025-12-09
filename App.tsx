@@ -1165,6 +1165,7 @@ const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
+  const [isNewSignup, setIsNewSignup] = useState(false);
   const [currentTab, setCurrentTab] = useState<ScreenName>('home');
   const [moods, setMoods] = useState<Record<string, MoodRecord>>({});
   const [weeklyReview, setWeeklyReview] = useState<string | null>(null);
@@ -1183,6 +1184,8 @@ const App: React.FC = () => {
     if (savedUser) {
         setUser(JSON.parse(savedUser));
         setShowOnboarding(false); // Skip onboarding on auto-login
+        setIsNewSignup(false);
+        setShowGuide(false);
     }
   }, []);
 
@@ -1203,24 +1206,26 @@ const App: React.FC = () => {
     load();
   }, [user]);
 
-  // Hide service guide for logged-in members
-  useEffect(() => {
-      if (user) {
-          setShowGuide(false);
-          localStorage.setItem('todak_guide_seen', 'true');
-      }
-  }, [user]);
-
   const handleLogin = (userObj: User, isNew: boolean) => {
     setUser(userObj);
+    setIsNewSignup(isNew);
     localStorage.setItem('todak_current_user', JSON.stringify(userObj));
     setShowOnboarding(isNew);
+    if (isNew) {
+        localStorage.removeItem('todak_guide_seen');
+        setShowGuide(true);
+    } else {
+        localStorage.setItem('todak_guide_seen', 'true');
+        setShowGuide(false);
+    }
   };
 
   const handleFinishOnboarding = () => {
     setShowOnboarding(false);
-    setShowGuide(false);
-    localStorage.setItem('todak_guide_seen', 'true');
+    setShowGuide(isNewSignup);
+    if (!isNewSignup) {
+        localStorage.setItem('todak_guide_seen', 'true');
+    }
   };
 
   const handleSaveMood = async (dateStr: string, emoIds: EmotionId[], text: string, aiMsg?: string, recs?: Recommendation[]) => {
@@ -1257,6 +1262,7 @@ const App: React.FC = () => {
       localStorage.removeItem('todak_current_user');
       setCurrentTab('home'); // Reset tab
       setShowGuide(false);
+      setIsNewSignup(false);
   };
 
   const openDeleteModal = () => setIsDeleteModalOpen(true);
@@ -1270,6 +1276,7 @@ const App: React.FC = () => {
       setMonthlyReview(null);
       setCurrentTab('home');
       setShowGuide(false);
+      setIsNewSignup(false);
       setIsDeleteModalOpen(false);
       localStorage.removeItem('todak_guide_seen'); // Optional: Reset guide on account delete
   }
