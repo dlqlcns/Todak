@@ -1,21 +1,52 @@
-
-import { GoogleGenAI, Type } from "@google/genai";
 import { EmotionId, MoodRecord } from '../types';
 import { EMOTIONS } from '../constants';
 
-const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
+type ChatMessage = {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+};
 
-const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+const apiKey = import.meta.env.OPEN_API_KEY || import.meta.env.VITE_OPEN_API_KEY;
 
-console.log('🔑 VITE_GEMINI_API_KEY 존재 여부:', !!apiKey); // true/false만 찍힘, 값은 안 노출됨
+console.log('🔑 OPEN_API_KEY 존재 여부:', !!apiKey); // true/false만 찍힘, 값은 안 노출됨
 
-const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
+const callOpenAI = async (
+  messages: ChatMessage[],
+  temperature = 0.7,
+  responseFormat?: 'json_object'
+): Promise<any> => {
+  if (!apiKey) return null;
 
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: 'gpt-4o-mini',
+      messages,
+      temperature,
+      ...(responseFormat ? { response_format: { type: responseFormat } } : {}),
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`OpenAI API Error: ${response.status} ${errorText}`);
+  }
+
+  return response.json();
+};
+
+const extractText = (data: any): string | null => {
+  const content = data?.choices?.[0]?.message?.content;
+  return typeof content === 'string' ? content.trim() : null;
+};
 
 const buildEmpathyFallback = async (emotionIds: EmotionId[], userContent: string): Promise<string> => {
   // 1) Try asking the model again with a lightweight prompt so even fallback text is AI-written.
-  if (ai) {
+  if (apiKey) {
     const emotionLabels = emotionIds
       .map((id) => EMOTIONS.find((e) => e.id === id)?.label || id)
       .join(', ');
@@ -32,13 +63,11 @@ const buildEmpathyFallback = async (emotionIds: EmotionId[], userContent: string
     `;
 
     try {
-      const aiResponse = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: aiFallbackPrompt,
-        config: { temperature: 0.75 },
-      });
+      const aiResponse = await callOpenAI([
+        { role: 'user', content: aiFallbackPrompt }
+      ], 0.75);
 
-      const aiText = aiResponse.text?.trim();
+      const aiText = extractText(aiResponse);
       if (aiText) {
         return aiText;
       }
@@ -47,16 +76,16 @@ const buildEmpathyFallback = async (emotionIds: EmotionId[], userContent: string
     }
   }
 
-  // Non-AI fallback copy in case the Gemini API is unavailable.
+  // Non-AI fallback copy in case the OpenAI API is unavailable.
   return "네 마음을 잘 들었어. 요즘 참 애썼겠구나. 잠깐 숨 고르듯 쉬어도 괜찮아, 내가 여기서 너를 응원하고 있어. 🌿";
 };
 
 /**
- * Generates an empathy message using Gemini API.
+ * Generates an empathy message using OpenAI API.
  */
 export const generateEmpathyMessage = async (emotionIds: EmotionId[], userContent: string): Promise<string> => {
   try {
-    if (!ai) {
+    if (!apiKey) {
       return buildEmpathyFallback(emotionIds, userContent);
     }
 
@@ -79,15 +108,13 @@ export const generateEmpathyMessage = async (emotionIds: EmotionId[], userConten
       - 조언은 가볍게, 위로와 공감에 초점을 둘 것.
     `;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: prompt,
-      config: {
-        temperature: 0.7,
-      },
-    });
+    const aiResponse = await callOpenAI([
+      { role: 'user', content: prompt }
+    ], 0.7);
 
-    return response.text?.trim() || (await buildEmpathyFallback(emotionIds, userContent));
+    const aiText = extractText(aiResponse);
+
+    return aiText || (await buildEmpathyFallback(emotionIds, userContent));
   } catch (error) {
     console.error("AI Service Error:", error);
     // Fallback
@@ -98,58 +125,38 @@ export const generateEmpathyMessage = async (emotionIds: EmotionId[], userConten
 /**
  * Generates media recommendations (Music, Video) based on mood.
  */
-export const generateMediaRecommendations = async (emotionLabels: string, userContent: string): Promise<{ music: { searchQuery: string, title: string, reason: string }, video: { searchQuery: string, title: string, reason: string } }> => {
+export const generateMediaRecommendations = async (emotionLabels: string, userContent: string): Promise<{ music: { searchQuery:
+string, title: string, reason: string }, video: { searchQuery: string, title: string, reason: string } }> => {
   try {
-    if (!ai) {
+    if (!apiKey) {
       return {
         music: { searchQuery: "healing piano music", title: "잔잔한 피아노 음악", reason: "마음을 편안하게 해줄 거예요." },
         video: { searchQuery: "nature sounds relaxing", title: "자연의 소리", reason: "잠시 숲속으로 떠나보세요." }
       };
     }
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: `
-        The user is feeling: "${emotionLabels}".
-        Journal content: "${userContent}".
+    const response = await callOpenAI([
+      {
+        role: 'user',
+        content: `
+            The user is feeling: "${emotionLabels}".
+            Journal content: "${userContent}".
 
-        Recommend:
-        1. ONE specific song available on Spotify that matches this mood.
-        2. ONE specific YouTube video topic (e.g., ASMR, motivational speech, specific music playlist style) that helps.
+            Recommend:
+            1. ONE specific song available on Spotify that matches this mood.
+            2. ONE specific YouTube video topic (e.g., ASMR, motivational speech, specific music playlist style) that helps.
 
-        Output JSON format.
-        Language: Korean.
-      `,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            music: {
-              type: Type.OBJECT,
-              properties: {
-                searchQuery: { type: Type.STRING, description: "Artist and Song Title for Spotify search query" },
-                title: { type: Type.STRING, description: "Display title (Song - Artist)" },
-                reason: { type: Type.STRING, description: "Short, warm reason why this fits (1 sentence)" },
-              },
-              required: ["searchQuery", "title", "reason"],
-            },
-            video: {
-              type: Type.OBJECT,
-              properties: {
-                searchQuery: { type: Type.STRING, description: "Keywords for YouTube search query" },
-                title: { type: Type.STRING, description: "Display title" },
-                reason: { type: Type.STRING, description: "Short, warm reason why this fits (1 sentence)" },
-              },
-              required: ["searchQuery", "title", "reason"],
-            },
-          },
-          required: ["music", "video"],
-        },
+            Output JSON format.
+            Language: Korean.
+          `,
       }
-    });
+    ], 0.4, 'json_object');
 
-    return JSON.parse(response.text);
+    const content = extractText(response);
+    return content ? JSON.parse(content) : {
+      music: { searchQuery: "healing piano music", title: "잔잔한 피아노 음악", reason: "마음을 편안하게 해줄 거예요." },
+      video: { searchQuery: "nature sounds relaxing", title: "자연의 소리", reason: "잠시 숲속으로 떠나보세요." }
+    };
   } catch (error) {
     console.error("AI Recommendation Error:", error);
     return {
@@ -161,7 +168,7 @@ export const generateMediaRecommendations = async (emotionLabels: string, userCo
 
 export const generateWeeklyReview = async (moods: MoodRecord[]): Promise<string> => {
     try {
-        if (!ai) {
+        if (!apiKey) {
             return moods && moods.length > 0
                 ? "이번 주는 다양한 감정들이 함께했네요. 힘든 날도 있었지만, 행복한 순간들도 빛났던 한 주였습니다. 다음 주도 당신의 속도대로 나아가길 응원해요! 🌈"
                 : "이번 주는 아직 기록이 부족해요. 당신의 작은 감정들도 소중하니 다음 주에는 꼭 들려주세요. 😊";
@@ -174,7 +181,7 @@ export const generateWeeklyReview = async (moods: MoodRecord[]): Promise<string>
         const prompt = `
           Act as "Todak", a warm mental wellness AI friend.
           Analyze the following mood journal entries for the week and write a gentle, encouraging weekly review in Korean (Banmal).
-          
+
           Focus on the flow of emotions. Highlight positive moments and offer warm comfort for sad ones.
           Keep it under 3-4 sentences. Use a soft, poetic tone.
           Do not analyze like a machine, speak like a caring friend.
@@ -183,24 +190,22 @@ export const generateWeeklyReview = async (moods: MoodRecord[]): Promise<string>
           ${moods.map(m => `- ${m.date}: ${m.emotionIds.join(', ')} (${m.content})`).join('\n')}
         `;
 
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: prompt,
-            config: {
-                temperature: 0.7,
-            }
-        });
+        const response = await callOpenAI([
+          { role: 'user', content: prompt }
+        ], 0.7);
 
-        return response.text || "이번 주는 다양한 감정들이 함께했네요. 힘든 날도 있었지만, 행복한 순간들도 빛났던 한 주였습니다. 다음 주도 당신의 속도대로 나아가길 응원해요! 🌈";
+        const text = extractText(response);
+
+        return text || "이번 주는 다양한 감정들이 함께했네요. 힘든 날도 있었지만, 행복한 순간들도 빛났던 한 주였습니다. 다음 주도 당신의 속도대로 나아가길 응원해요! 🌈";
     } catch (error) {
         console.error("AI Service Error:", error);
         return "이번 주는 다양한 감정들이 함께했네요. 힘든 날도 있었지만, 행복한 순간들도 빛났던 한 주였습니다. 다음 주도 당신의 속도대로 나아가길 응원해요! 🌈";
     }
-}
+};
 
 export const generateMonthlyReview = async (moods: MoodRecord[]): Promise<string> => {
     try {
-        if (!ai) {
+        if (!apiKey) {
             return moods && moods.length > 0
                 ? "한 달 동안 정말 수고 많았어요. 다양한 감정의 파도 속에서도 자신을 잃지 않고 기록해준 당신이 멋져요. 다음 달도 당신의 색으로 가득 채워지길! ✨"
                 : "이번 달은 아직 기록이 충분하지 않아요. 하루하루 쌓이는 마음들이 당신을 더 단단하게 만들어줄 거예요. 🌙";
@@ -213,7 +218,7 @@ export const generateMonthlyReview = async (moods: MoodRecord[]): Promise<string
         const prompt = `
           Act as "Todak", a warm mental wellness AI friend.
           Analyze the following mood journal entries for the entire MONTH and write a gentle, insightful monthly review in Korean (Banmal).
-          
+
           Look for overall patterns or changes in mood over the month.
           Acknowledge their effort in recording their days.
           Keep it under 3-5 sentences. Use a warm, reflective tone.
@@ -222,17 +227,15 @@ export const generateMonthlyReview = async (moods: MoodRecord[]): Promise<string
           ${moods.map(m => `- ${m.date}: ${m.emotionIds.join(', ')} (${m.content})`).join('\n')}
         `;
 
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: prompt,
-            config: {
-                temperature: 0.7,
-            }
-        });
+        const response = await callOpenAI([
+          { role: 'user', content: prompt }
+        ], 0.7);
 
-        return response.text || "한 달 동안 정말 수고 많았어요. 다양한 감정의 파도 속에서도 자신을 잃지 않고 기록해준 당신이 멋져요. 다음 달도 당신의 색으로 가득 채워지길! ✨";
+        const text = extractText(response);
+
+        return text || "한 달 동안 정말 수고 많았어요. 다양한 감정의 파도 속에서도 자신을 잃지 않고 기록해준 당신이 멋져요. 다음 달도 당신의 색으로 가득 채워지길! ✨";
     } catch (error) {
         console.error("AI Service Error:", error);
         return "한 달 동안 정말 수고 많았어요. 다양한 감정의 파도 속에서도 자신을 잃지 않고 기록해준 당신이 멋져요. 다음 달도 당신의 색으로 가득 채워지길! ✨";
     }
-}
+};
