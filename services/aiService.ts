@@ -3,8 +3,15 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { EmotionId, MoodRecord } from '../types';
 import { EMOTIONS } from '../constants';
 
-const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+const apiKey = import.meta.env.GEMINI_API_KEY;
 const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
+
+const apiKey = import.meta.env.GEMINI_API_KEY;
+
+console.log('🔑 GEMINI_API_KEY 존재 여부:', !!apiKey); // true/false만 찍힘, 값은 안 노출됨
+
+const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
+
 
 const buildEmpathyFallback = async (emotionIds: EmotionId[], userContent: string): Promise<string> => {
   // 1) Try asking the model again with a lightweight prompt so even fallback text is AI-written.
@@ -39,6 +46,10 @@ const buildEmpathyFallback = async (emotionIds: EmotionId[], userContent: string
       console.error('Fallback AI error:', fallbackError);
     }
   }
+
+  // Non-AI fallback copy in case the Gemini API is unavailable.
+  return "네 마음을 잘 들었어. 요즘 참 애썼겠구나. 잠깐 숨 고르듯 쉬어도 괜찮아, 내가 여기서 너를 응원하고 있어. 🌿";
+};
 
 /**
  * Generates an empathy message using Gemini API.
