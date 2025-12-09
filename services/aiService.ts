@@ -1,10 +1,30 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 import { EmotionId, MoodRecord } from '../types';
-import { AI_EMPATHY_MESSAGES, EMOTIONS } from '../constants';
+import { EMOTIONS } from '../constants';
 
 const apiKey = import.meta.env.VITE_GOOGLE_GENAI_API_KEY;
 const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
+
+const buildEmpathyFallback = (emotionIds: EmotionId[], userContent: string): string => {
+  const primaryEmotionId = emotionIds[0];
+  const primaryLabel = EMOTIONS.find((e) => e.id === primaryEmotionId)?.label || primaryEmotionId;
+  const safeContent = userContent?.trim();
+  const contentSnippet = safeContent ? `"${safeContent.slice(0, 80)}${safeContent.length > 80 ? '…' : ''}"` : '';
+
+  const emotionBased = {
+    angry: `지금 ${primaryLabel}로 마음이 뜨거운 것 같아. ${contentSnippet} 라고 적어준 마음이 느껴져. 잠깐 숨 고르며 마음을 쉬어가보자.`,
+    worried: `${contentSnippet || '적어준'} 이야기를 읽으니 걱정이 많이 되는 하루였겠다. 내가 옆에서 살짝 어깨를 토닥여줄게.`,
+    happy: `${contentSnippet || '적어준'} 순간들이 너를 미소 짓게 했구나. 그 따뜻함을 조금 더 오래 붙잡아보자. ✨`,
+    sad: `${contentSnippet || '적어준'} 마음이 많이 무겁겠어. 조용히 옆에 앉아 있을게, 잠시라도 숨을 고르며 쉬어가자.`,
+    anxious: `${contentSnippet || '적어준'} 생각들 때문에 마음이 조급했을 것 같아. 천천히 숨을 들이쉬고 내쉬면서 내가 옆에 있음을 느껴줘.`,
+  } as Record<string, string>;
+
+  return (
+    emotionBased[primaryEmotionId] ||
+    `${contentSnippet || '적어준 일기'}를 읽었어. ${primaryLabel ? `${primaryLabel}한 감정이 느껴졌어.` : ''} 어떤 색이든 너의 마음을 존중해. 함께 천천히 풀어가보자. 🌿`
+  );
+};
 
 /**
  * Generates an empathy message using Gemini API.
@@ -12,8 +32,7 @@ const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 export const generateEmpathyMessage = async (emotionIds: EmotionId[], userContent: string): Promise<string> => {
   try {
     if (!ai) {
-      const primaryEmotionId = emotionIds[0];
-      return AI_EMPATHY_MESSAGES[primaryEmotionId] || AI_EMPATHY_MESSAGES.default;
+      return buildEmpathyFallback(emotionIds, userContent);
     }
 
     // Get all emotion labels
@@ -48,12 +67,11 @@ export const generateEmpathyMessage = async (emotionIds: EmotionId[], userConten
       }
     });
 
-    return response.text || AI_EMPATHY_MESSAGES[primaryEmotionId] || AI_EMPATHY_MESSAGES.default;
+    return response.text || buildEmpathyFallback(emotionIds, userContent);
   } catch (error) {
     console.error("AI Service Error:", error);
     // Fallback
-    const primaryEmotionId = emotionIds[0];
-    return AI_EMPATHY_MESSAGES[primaryEmotionId] || AI_EMPATHY_MESSAGES.default;
+    return buildEmpathyFallback(emotionIds, userContent);
   }
 };
 
