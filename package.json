@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "start": "npm run build && node server.js"
+    "start": "npm run build && node server.js",
+    "test:gemini": "node scripts/test-gemini.js"
   },
   "dependencies": {
     "@google/genai": "^1.30.0",
