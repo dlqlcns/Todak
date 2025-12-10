@@ -21,17 +21,21 @@ const extractText = (response: { text?: (() => string) | string }): string => {
 };
 
 
+const normalizeJournalText = (userContent: string): string =>
+  userContent?.trim() || '일기 내용이 비어 있어. 선택한 감정을 참고해서 위로를 건네줘.';
+
 const buildEmpathyFallback = async (emotionIds: EmotionId[], userContent: string): Promise<string> => {
   // 1) Try asking the model again with a lightweight prompt so even fallback text is AI-written.
   if (ai) {
     const emotionLabels = emotionIds
       .map((id) => EMOTIONS.find((e) => e.id === id)?.label || id)
       .join(', ');
+    const normalizedContent = normalizeJournalText(userContent);
 
     const aiFallbackPrompt = `
       역할: 너는 "Todak". 편안하고 따뜻한 친구처럼 한국어 반말로 말해줘.
       감정 단서: ${emotionLabels || '없음'}
-      일기 단서: ${userContent || '(비어 있음)'}
+      일기 단서: ${normalizedContent}
 
       조건:
       - 위 단서를 너 스스로 해석해서 2~3문장 공감 메시지를 만들어.
@@ -73,11 +77,13 @@ export const generateEmpathyMessage = async (emotionIds: EmotionId[], userConten
       .map((id) => EMOTIONS.find((emo) => emo.id === id)?.label || id)
       .join(', ');
 
+    const normalizedContent = normalizeJournalText(userContent);
+
     const prompt = `
       역할: 너는 "Todak". 편안하고 따뜻하지만 상담사가 아닌 친구야.
 
       입력된 감정(사용자 선택): ${emotionLabels || '없음'}
-      일기 내용: ${userContent || '(비어 있음)'}
+      일기 내용: ${normalizedContent}
 
       규칙:
       - 일기 텍스트와 감정을 너 스스로 해석해, 주어진 단어를 끼워 넣지 말 것.
@@ -123,11 +129,13 @@ export const generateMediaRecommendations = async (emotionLabels: string, userCo
       };
     }
 
+    const normalizedContent = normalizeJournalText(userContent);
+
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: `
         The user is feeling: "${emotionLabels}".
-        Journal content: "${userContent}".
+        Journal content: "${normalizedContent}".
 
         Recommend:
         1. ONE specific song available on Spotify that matches this mood.
