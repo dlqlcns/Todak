@@ -591,8 +591,11 @@ const HomeScreen: React.FC<{
                     onChange={(e) => setText(e.target.value)}
                     maxLength={200}
                     placeholder="오늘 어떤 일이 있었나요? 편하게 적어주세요."
-                    className="w-full h-40 p-6 bg-white rounded-[24px] border border-olivegray/20 focus:ring-2 focus:ring-olive focus:border-transparent resize-none mb-6 text-warmbrown placeholder:text-warmbrown/30 shadow-sm"
+                    className="w-full h-40 p-6 bg-white rounded-[24px] border border-olivegray/20 focus:ring-2 focus:ring-olive focus:border-transparent resize-none mb-2 text-warmbrown placeholder:text-warmbrown/30 shadow-sm"
                 />
+                {!text.trim() && (
+                    <p className="text-softorange text-sm mb-4">한 줄 기록을 작성해주세요.</p>
+                )}
                 <Button fullWidth onClick={handleSubmit} disabled={selectedEmos.length === 0 || !text.trim()} className="py-5 text-lg shadow-xl shadow-olive/20">
                     기록 완료하기
                 </Button>
