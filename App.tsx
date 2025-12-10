@@ -718,7 +718,7 @@ const CalendarScreen: React.FC<{
 };
 
 // 6. Report Screen
-type ReviewState = { content: string | null; lastMoodTimestamp: number; periodKey: string | null };
+type ReviewState = { content: string | null; lastMoodTimestamp: number; periodKey: string | null; periodStart: string | null; periodEnd: string | null };
 
 const ReportScreen: React.FC<{
     userId: number;
@@ -811,6 +811,17 @@ const ReportScreen: React.FC<{
         ? format(startOfWeek(baseDate, { weekStartsOn: 0 }), 'yyyy-MM-dd')
         : format(baseDate, 'yyyy-MM'), [viewMode, baseDate]);
 
+    const periodRange = useMemo(() => {
+        if (daysToShow.length === 0) {
+            return { start: '', end: '' };
+        }
+
+        return {
+            start: format(daysToShow[0], 'yyyy-MM-dd'),
+            end: format(daysToShow[daysToShow.length - 1], 'yyyy-MM-dd'),
+        };
+    }, [daysToShow]);
+
     const recordsForPeriod = useMemo(() => (
         daysToShow
             .map(d => moods[format(d, 'yyyy-MM-dd')])
@@ -841,12 +852,14 @@ const ReportScreen: React.FC<{
 
             setIsLoading(true);
             try {
-                const existing = await fetchPeriodReview(userId, viewMode, periodKey);
+                const existing = await fetchPeriodReview(userId, viewMode, periodKey, periodRange.start, periodRange.end);
                 if (existing && existing.lastMoodTimestamp >= latestMoodTimestamp) {
                     setCurrentReview({
                         content: existing.content,
                         lastMoodTimestamp: existing.lastMoodTimestamp,
                         periodKey: existing.periodKey,
+                        periodStart: existing.periodStart,
+                        periodEnd: existing.periodEnd,
                     });
                     return;
                 }
@@ -859,9 +872,11 @@ const ReportScreen: React.FC<{
                     content: review,
                     lastMoodTimestamp: latestMoodTimestamp,
                     periodKey,
+                    periodStart: periodRange.start,
+                    periodEnd: periodRange.end,
                 });
 
-                await savePeriodReview(userId, viewMode, periodKey, review, latestMoodTimestamp);
+                await savePeriodReview(userId, viewMode, periodKey, review, latestMoodTimestamp, periodRange.start, periodRange.end);
             } catch (err) {
                 console.error(err);
             } finally {
@@ -869,7 +884,7 @@ const ReportScreen: React.FC<{
             }
         };
         fetchReview();
-    }, [viewMode, hasData, periodKey, latestMoodTimestamp, recordsForPeriod, userId, weeklyReview, monthlyReview]);
+    }, [viewMode, hasData, periodKey, latestMoodTimestamp, recordsForPeriod, userId, weeklyReview, monthlyReview, periodRange]);
 
     const currentReview = viewMode === 'weekly' ? weeklyReview : monthlyReview;
     const reviewTitle = viewMode === 'weekly' ? "AI 주간 회고" : "AI 월간 회고";
@@ -1285,7 +1300,7 @@ const App: React.FC = () => {
   const [isNewSignup, setIsNewSignup] = useState(false);
   const [currentTab, setCurrentTab] = useState<ScreenName>('home');
   const [moods, setMoods] = useState<Record<string, MoodRecord>>({});
-  const emptyReviewState: ReviewState = { content: null, lastMoodTimestamp: 0, periodKey: null };
+  const emptyReviewState: ReviewState = { content: null, lastMoodTimestamp: 0, periodKey: null, periodStart: null, periodEnd: null };
   const [weeklyReview, setWeeklyReview] = useState<ReviewState>(emptyReviewState);
   const [monthlyReview, setMonthlyReview] = useState<ReviewState>(emptyReviewState);
   const [isLoadingData, setIsLoadingData] = useState(false);

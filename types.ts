@@ -32,6 +32,8 @@ export interface MoodRecord {
 
 export interface PeriodReview {
   content: string;
+  periodStart: string;
+  periodEnd: string;
   periodKey: string;
   lastMoodTimestamp: number;
   periodType: 'weekly' | 'monthly';

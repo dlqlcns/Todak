@@ -81,9 +81,11 @@ export async function fetchPeriodReview(
   userId: number,
   periodType: 'weekly' | 'monthly',
   periodKey: string,
+  periodStart: string,
+  periodEnd: string,
 ): Promise<PeriodReview | null> {
   const { review } = await request<{ review: PeriodReview | null }>(
-    `/api/reviews?userId=${userId}&periodType=${periodType}&periodKey=${encodeURIComponent(periodKey)}`,
+    `/api/reviews?userId=${userId}&periodType=${periodType}&periodKey=${encodeURIComponent(periodKey)}&periodStart=${encodeURIComponent(periodStart)}&periodEnd=${encodeURIComponent(periodEnd)}`,
   );
   return review;
 }
@@ -94,10 +96,12 @@ export async function savePeriodReview(
   periodKey: string,
   content: string,
   lastMoodTimestamp: number,
+  periodStart: string,
+  periodEnd: string,
 ): Promise<PeriodReview> {
   const { review } = await request<{ review: PeriodReview }>('/api/reviews', {
     method: 'POST',
-    body: JSON.stringify({ userId, periodType, periodKey, content, lastMoodTimestamp }),
+    body: JSON.stringify({ userId, periodType, periodKey, content, lastMoodTimestamp, periodStart, periodEnd }),
   });
   return review;
 }

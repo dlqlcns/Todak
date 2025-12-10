@@ -164,18 +164,21 @@ app.get('/api/reviews', async (req, res) => {
   const userId = Number(req.query.userId);
   const periodType = String(req.query.periodType || '').trim();
   const periodKey = String(req.query.periodKey || '').trim();
+  const periodStart = String(req.query.periodStart || '').trim();
+  const periodEnd = String(req.query.periodEnd || '').trim();
 
-  if (!userId || !periodType || !periodKey) {
-    return res.status(400).send('userId, periodType, periodKey가 필요합니다.');
+  if (!userId || !periodType || !periodKey || !periodStart || !periodEnd) {
+    return res.status(400).send('userId, periodType, periodKey, periodStart, periodEnd가 필요합니다.');
   }
 
   try {
     const { data, error } = await supabase
-      .from('period_reviews')
-      .select('content, period_key, period_type, last_mood_ts')
+      .from('user_reflections')
+      .select('content, period_start, period_end, type, ai_summary')
       .eq('user_id', userId)
-      .eq('period_type', periodType)
-      .eq('period_key', periodKey)
+      .eq('type', periodType)
+      .eq('period_start', periodStart)
+      .eq('period_end', periodEnd)
       .maybeSingle();
 
     if (error && error.code !== 'PGRST116' && error.code !== 'PGRST204') {
@@ -186,12 +189,26 @@ app.get('/api/reviews', async (req, res) => {
       return res.json({ review: null });
     }
 
+    let lastMoodTimestamp = 0;
+    if (data.ai_summary) {
+      try {
+        const parsed = JSON.parse(data.ai_summary);
+        if (parsed && typeof parsed.lastMoodTimestamp === 'number') {
+          lastMoodTimestamp = parsed.lastMoodTimestamp;
+        }
+      } catch (parseErr) {
+        console.warn('Failed to parse ai_summary for review', parseErr);
+      }
+    }
+
     res.json({
       review: {
         content: data.content,
-        periodKey: data.period_key,
-        lastMoodTimestamp: data.last_mood_ts ?? 0,
-        periodType: data.period_type,
+        periodKey,
+        periodStart: data.period_start,
+        periodEnd: data.period_end,
+        lastMoodTimestamp,
+        periodType: data.type,
       },
     });
   } catch (err) {
@@ -201,21 +218,23 @@ app.get('/api/reviews', async (req, res) => {
 });
 
 app.post('/api/reviews', async (req, res) => {
-  const { userId, periodType, periodKey, content, lastMoodTimestamp } = req.body || {};
+  const { userId, periodType, periodKey, content, lastMoodTimestamp, periodStart, periodEnd } = req.body || {};
 
-  if (!userId || !periodType || !periodKey || !content) {
-    return res.status(400).send('userId, periodType, periodKey, content가 필요합니다.');
+  if (!userId || !periodType || !periodKey || !content || !periodStart || !periodEnd) {
+    return res.status(400).send('userId, periodType, periodKey, periodStart, periodEnd, content가 필요합니다.');
   }
 
   try {
     const now = new Date();
+    const summaryPayload = JSON.stringify({ lastMoodTimestamp: lastMoodTimestamp ?? 0 });
 
     const { data: existing, error: existingError } = await supabase
-      .from('period_reviews')
+      .from('user_reflections')
       .select('id')
       .eq('user_id', userId)
-      .eq('period_type', periodType)
-      .eq('period_key', periodKey)
+      .eq('type', periodType)
+      .eq('period_start', periodStart)
+      .eq('period_end', periodEnd)
       .maybeSingle();
 
     if (existingError) {
@@ -225,14 +244,16 @@ app.post('/api/reviews', async (req, res) => {
     let review;
     if (existing?.id) {
       const { data, error } = await supabase
-        .from('period_reviews')
+        .from('user_reflections')
         .update({
           content,
-          last_mood_ts: lastMoodTimestamp ?? null,
+          period_start: periodStart,
+          period_end: periodEnd,
+          ai_summary: summaryPayload,
           updated_at: now,
         })
         .eq('id', existing.id)
-        .select('content, period_key, period_type, last_mood_ts')
+        .select('content, period_start, period_end, type, ai_summary')
         .single();
 
       if (error) {
@@ -241,17 +262,18 @@ app.post('/api/reviews', async (req, res) => {
       review = data;
     } else {
       const { data, error } = await supabase
-        .from('period_reviews')
+        .from('user_reflections')
         .insert({
           user_id: userId,
-          period_type: periodType,
-          period_key: periodKey,
+          type: periodType,
+          period_start: periodStart,
+          period_end: periodEnd,
           content,
-          last_mood_ts: lastMoodTimestamp ?? null,
+          ai_summary: summaryPayload,
           created_at: now,
           updated_at: now,
         })
-        .select('content, period_key, period_type, last_mood_ts')
+        .select('content, period_start, period_end, type, ai_summary')
         .single();
 
       if (error) {
@@ -260,12 +282,23 @@ app.post('/api/reviews', async (req, res) => {
       review = review || data;
     }
 
+    let parsedSummary = { lastMoodTimestamp: 0 };
+    if (review?.ai_summary) {
+      try {
+        parsedSummary = JSON.parse(review.ai_summary) || parsedSummary;
+      } catch (parseErr) {
+        console.warn('Failed to parse ai_summary after save', parseErr);
+      }
+    }
+
     res.json({
       review: {
         content: review.content,
-        periodKey: review.period_key,
-        lastMoodTimestamp: review.last_mood_ts ?? 0,
-        periodType: review.period_type,
+        periodKey,
+        periodStart: review.period_start,
+        periodEnd: review.period_end,
+        lastMoodTimestamp: parsedSummary.lastMoodTimestamp ?? 0,
+        periodType: review.type,
       },
     });
   } catch (err) {
