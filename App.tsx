@@ -387,6 +387,7 @@ const HomeScreen: React.FC<{
 }> = ({ user, todayMood, onSaveMood, onLogout }) => {
   const [selectedEmos, setSelectedEmos] = useState<EmotionId[]>([]);
   const [text, setText] = useState('');
+  const [showTextWarning, setShowTextWarning] = useState(false);
   const [isLoadingAi, setIsLoadingAi] = useState(false);
 
   // Toggle emotion selection (max 3)
@@ -494,6 +495,11 @@ const HomeScreen: React.FC<{
 
   const handleSubmit = async () => {
     if (selectedEmos.length === 0) return;
+
+    if (!text.trim()) {
+        setShowTextWarning(true);
+        return;
+    }
     setIsLoadingAi(true);
     
     // 1. Generate real AI message
@@ -588,15 +594,20 @@ const HomeScreen: React.FC<{
                 <h3 className="text-lg font-bold text-warmbrown mb-4 pl-1">한 줄 기록</h3>
                 <textarea
                     value={text}
-                    onChange={(e) => setText(e.target.value)}
+                    onChange={(e) => {
+                        setText(e.target.value);
+                        if (showTextWarning && e.target.value.trim()) {
+                            setShowTextWarning(false);
+                        }
+                    }}
                     maxLength={200}
                     placeholder="오늘 어떤 일이 있었나요? 편하게 적어주세요."
                     className="w-full h-40 p-6 bg-white rounded-[24px] border border-olivegray/20 focus:ring-2 focus:ring-olive focus:border-transparent resize-none mb-2 text-warmbrown placeholder:text-warmbrown/30 shadow-sm"
                 />
-                {!text.trim() && (
+                {showTextWarning && !text.trim() && (
                     <p className="text-softorange text-sm mb-4">한 줄 기록을 작성해주세요.</p>
                 )}
-                <Button fullWidth onClick={handleSubmit} disabled={selectedEmos.length === 0 || !text.trim()} className="py-5 text-lg shadow-xl shadow-olive/20">
+                <Button fullWidth onClick={handleSubmit} disabled={selectedEmos.length === 0} className="py-5 text-lg shadow-xl shadow-olive/20">
                     기록 완료하기
                 </Button>
         </div>
