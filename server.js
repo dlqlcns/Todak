@@ -160,6 +160,120 @@ app.get('/api/check-id', async (req, res) => {
   }
 });
 
+app.get('/api/reviews', async (req, res) => {
+  const userId = Number(req.query.userId);
+  const periodType = String(req.query.periodType || '').trim();
+  const periodKey = String(req.query.periodKey || '').trim();
+
+  if (!userId || !periodType || !periodKey) {
+    return res.status(400).send('userId, periodType, periodKey가 필요합니다.');
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('period_reviews')
+      .select('content, period_key, period_type, last_mood_ts')
+      .eq('user_id', userId)
+      .eq('period_type', periodType)
+      .eq('period_key', periodKey)
+      .maybeSingle();
+
+    if (error && error.code !== 'PGRST116' && error.code !== 'PGRST204') {
+      throw error;
+    }
+
+    if (!data) {
+      return res.json({ review: null });
+    }
+
+    res.json({
+      review: {
+        content: data.content,
+        periodKey: data.period_key,
+        lastMoodTimestamp: data.last_mood_ts ?? 0,
+        periodType: data.period_type,
+      },
+    });
+  } catch (err) {
+    console.error('Fetch review error:', err);
+    res.status(500).send('회고 데이터를 불러오지 못했어요.');
+  }
+});
+
+app.post('/api/reviews', async (req, res) => {
+  const { userId, periodType, periodKey, content, lastMoodTimestamp } = req.body || {};
+
+  if (!userId || !periodType || !periodKey || !content) {
+    return res.status(400).send('userId, periodType, periodKey, content가 필요합니다.');
+  }
+
+  try {
+    const now = new Date();
+
+    const { data: existing, error: existingError } = await supabase
+      .from('period_reviews')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('period_type', periodType)
+      .eq('period_key', periodKey)
+      .maybeSingle();
+
+    if (existingError) {
+      throw existingError;
+    }
+
+    let review;
+    if (existing?.id) {
+      const { data, error } = await supabase
+        .from('period_reviews')
+        .update({
+          content,
+          last_mood_ts: lastMoodTimestamp ?? null,
+          updated_at: now,
+        })
+        .eq('id', existing.id)
+        .select('content, period_key, period_type, last_mood_ts')
+        .single();
+
+      if (error) {
+        throw error;
+      }
+      review = data;
+    } else {
+      const { data, error } = await supabase
+        .from('period_reviews')
+        .insert({
+          user_id: userId,
+          period_type: periodType,
+          period_key: periodKey,
+          content,
+          last_mood_ts: lastMoodTimestamp ?? null,
+          created_at: now,
+          updated_at: now,
+        })
+        .select('content, period_key, period_type, last_mood_ts')
+        .single();
+
+      if (error) {
+        throw error;
+      }
+      review = review || data;
+    }
+
+    res.json({
+      review: {
+        content: review.content,
+        periodKey: review.period_key,
+        lastMoodTimestamp: review.last_mood_ts ?? 0,
+        periodType: review.period_type,
+      },
+    });
+  } catch (err) {
+    console.error('Save review error:', err);
+    res.status(500).send('회고 데이터를 저장하지 못했어요.');
+  }
+});
+
 app.get('/api/moods', async (req, res) => {
   const userId = Number(req.query.userId);
   if (!userId) {
