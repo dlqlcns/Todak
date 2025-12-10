@@ -3,10 +3,14 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { EmotionId, MoodRecord } from '../types';
 import { EMOTIONS } from '../constants';
 
-const apiKey = import.meta.env.GEMINI_API_KEY;
+const apiKey = import.meta?.env?.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
 
 // Follow the official Gemini client usage pattern. Only create the client when a key is present.
 const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
+
+if (!ai) {
+  console.warn('[Gemini] GEMINI_API_KEY가 설정되지 않아 로컬에서 AI 호출이 비활성화되었습니다. .env.local을 확인해주세요.');
+}
 
 const extractText = (response: { text?: (() => string) | string }): string => {
   const rawText = typeof response.text === 'function' ? response.text() : response.text;
