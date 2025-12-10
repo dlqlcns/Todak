@@ -107,14 +107,19 @@ export const generateEmpathyMessage = async (emotionIds: EmotionId[], userConten
 };
 
 /**
- * Generates media recommendations (Music, Video) based on mood.
+ * Generates media recommendations (Music, Video, Activity) based on mood and journal context.
  */
-export const generateMediaRecommendations = async (emotionLabels: string, userContent: string): Promise<{ music: { searchQuery: string, title: string, reason: string }, video: { searchQuery: string, title: string, reason: string } }> => {
+export const generateMediaRecommendations = async (emotionLabels: string, userContent: string): Promise<{
+  music: { searchQuery: string, title: string, reason: string },
+  video: { searchQuery: string, title: string, reason: string },
+  activity: { title: string, reason: string }
+}> => {
   try {
     if (!ai) {
       return {
         music: { searchQuery: "healing piano music", title: "잔잔한 피아노 음악", reason: "마음을 편안하게 해줄 거예요." },
-        video: { searchQuery: "nature sounds relaxing", title: "자연의 소리", reason: "잠시 숲속으로 떠나보세요." }
+        video: { searchQuery: "nature sounds relaxing", title: "자연의 소리", reason: "잠시 숲속으로 떠나보세요." },
+        activity: { title: "30분 산책하기", reason: "가볍게 걷다 보면 마음이 한결 가라앉을 거예요." }
       };
     }
 
@@ -127,6 +132,7 @@ export const generateMediaRecommendations = async (emotionLabels: string, userCo
         Recommend:
         1. ONE specific song available on Spotify that matches this mood.
         2. ONE specific YouTube video topic (e.g., ASMR, motivational speech, specific music playlist style) that helps.
+        3. ONE simple self-care activity (e.g., 30분 산책하기, 따뜻한 차 마시기) that matches their emotion and diary content.
 
         Output JSON format.
         Language: Korean.
@@ -154,8 +160,16 @@ export const generateMediaRecommendations = async (emotionLabels: string, userCo
               },
               required: ["searchQuery", "title", "reason"],
             },
+            activity: {
+              type: Type.OBJECT,
+              properties: {
+                title: { type: Type.STRING, description: "Short activity suggestion in Korean (e.g., 30분 산책하기)" },
+                reason: { type: Type.STRING, description: "One-sentence encouragement tied to the diary mood" },
+              },
+              required: ["title", "reason"],
+            },
           },
-          required: ["music", "video"],
+          required: ["music", "video", "activity"],
         },
       }
     });
@@ -166,7 +180,8 @@ export const generateMediaRecommendations = async (emotionLabels: string, userCo
     console.error("AI Recommendation Error:", error);
     return {
       music: { searchQuery: "healing piano music", title: "잔잔한 피아노 음악", reason: "마음을 편안하게 해줄 거예요." },
-      video: { searchQuery: "nature sounds relaxing", title: "자연의 소리", reason: "잠시 숲속으로 떠나보세요." }
+      video: { searchQuery: "nature sounds relaxing", title: "자연의 소리", reason: "잠시 숲속으로 떠나보세요." },
+      activity: { title: "30분 산책하기", reason: "가볍게 걷다 보면 마음이 한결 가라앉을 거예요." }
     };
   }
 };

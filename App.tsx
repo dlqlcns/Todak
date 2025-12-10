@@ -508,18 +508,24 @@ const HomeScreen: React.FC<{
     // Combine Recommendations
     const finalRecs: Recommendation[] = [
         {
-            id: 'gen-music', 
-            type: 'music', 
-            title: mediaRecs.music.title, 
-            desc: mediaRecs.music.reason, 
-            link: `https://open.spotify.com/search/${encodeURIComponent(mediaRecs.music.searchQuery)}` 
+            id: 'gen-music',
+            type: 'music',
+            title: mediaRecs.music.title,
+            desc: mediaRecs.music.reason,
+            link: `https://open.spotify.com/search/${encodeURIComponent(mediaRecs.music.searchQuery)}`
         },
-        { 
+        {
             id: 'gen-video',
             type: 'video',
             title: mediaRecs.video.title,
             desc: mediaRecs.video.reason,
             link: `https://www.youtube.com/results?search_query=${encodeURIComponent(mediaRecs.video.searchQuery)}`
+        },
+        {
+            id: 'gen-activity',
+            type: 'activity',
+            title: mediaRecs.activity.title,
+            desc: mediaRecs.activity.reason
         }
     ];
 
