@@ -10,7 +10,7 @@ import {
   PieChart, Pie, LabelList
 } from 'recharts';
 import { ChevronDown, ChevronLeft, ChevronRight, Play, BookOpen, Music, LogOut, Loader2, Sparkles, CloudSun, Calendar as CalendarIcon, Check, ExternalLink } from 'lucide-react';
-import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, subDays, startOfMonth, endOfMonth, getDay, addMonths, subMonths, addWeeks, subWeeks, getWeekOfMonth } from 'date-fns';
+import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, subDays, startOfMonth, endOfMonth, getDay, addMonths, subMonths, addWeeks, subWeeks, getWeekOfMonth, differenceInCalendarDays } from 'date-fns';
 import { ko } from 'date-fns/locale';
 
 // --- Screens ---
@@ -1123,15 +1123,19 @@ const NotificationScreen: React.FC<{
 };
 
 // 8. Profile Screen
-const ProfileScreen: React.FC<{ 
-    user: User; 
+const ProfileScreen: React.FC<{
+    user: User;
     moods: Record<string, MoodRecord>;
     onLogout: () => void;
     onBack: () => void;
     openDeleteModal: () => void;
 }> = ({ user, moods, onLogout, onBack, openDeleteModal }) => {
     const [statPeriod, setStatPeriod] = useState<string>('all');
-    const totalDays = Object.keys(moods).length;
+    const totalDays = useMemo(() => {
+        const start = new Date(user.startDate);
+        if (isNaN(start.getTime())) return 0;
+        return Math.max(0, differenceInCalendarDays(new Date(), start));
+    }, [user.startDate]);
 
     // Get Available Months for Filter
     const availableMonths = useMemo(() => {
