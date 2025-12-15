@@ -3,12 +3,26 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { EmotionId, MoodRecord } from '../types';
 import { EMOTIONS } from '../constants';
 
-const apiKey = import.meta.env.GEMINI_API_KEY;
+const apiKey =
+  import.meta?.env?.GEMINI_API_KEY ||
+  import.meta?.env?.VITE_GEMINI_API_KEY ||
+  process.env.GEMINI_API_KEY;
 
-console.log('🔑 GEMINI_API_KEY 존재 여부:', !!apiKey); // true/false만 찍힘, 값은 안 노출됨
-
+// Follow the official Gemini client usage pattern. Only create the client when a key is present.
 const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
+if (!ai) {
+  console.warn('[Gemini] GEMINI_API_KEY가 설정되지 않아 AI 호출이 비활성화되었습니다. Railway 환경변수 또는 .env.local 설정을 확인해주세요.');
+}
+
+const extractText = (response: { text?: (() => string) | string }): string => {
+  const rawText = typeof response.text === 'function' ? response.text() : response.text;
+  return rawText?.toString().trim() || '';
+};
+
+
+const normalizeJournalText = (userContent: string): string =>
+  userContent?.trim() || '일기 내용이 비어 있어. 선택한 감정을 참고해서 위로를 건네줘.';
 
 const buildEmpathyFallback = async (emotionIds: EmotionId[], userContent: string): Promise<string> => {
   // 1) Try asking the model again with a lightweight prompt so even fallback text is AI-written.
@@ -16,11 +30,12 @@ const buildEmpathyFallback = async (emotionIds: EmotionId[], userContent: string
     const emotionLabels = emotionIds
       .map((id) => EMOTIONS.find((e) => e.id === id)?.label || id)
       .join(', ');
+    const normalizedContent = normalizeJournalText(userContent);
 
     const aiFallbackPrompt = `
       역할: 너는 "Todak". 편안하고 따뜻한 친구처럼 한국어 반말로 말해줘.
       감정 단서: ${emotionLabels || '없음'}
-      일기 단서: ${userContent || '(비어 있음)'}
+      일기 단서: ${normalizedContent}
 
       조건:
       - 위 단서를 너 스스로 해석해서 2~3문장 공감 메시지를 만들어.
@@ -35,10 +50,7 @@ const buildEmpathyFallback = async (emotionIds: EmotionId[], userContent: string
         config: { temperature: 0.75 },
       });
 
-      const aiText = aiResponse.text?.trim?.() ?? aiResponse.text?.();
-      const normalizedText = typeof aiResponse.text === 'function'
-        ? aiResponse.text()?.trim()
-        : aiText;
+      const normalizedText = extractText(aiResponse);
 
       if (normalizedText) {
         return normalizedText;
@@ -65,11 +77,13 @@ export const generateEmpathyMessage = async (emotionIds: EmotionId[], userConten
       .map((id) => EMOTIONS.find((emo) => emo.id === id)?.label || id)
       .join(', ');
 
+    const normalizedContent = normalizeJournalText(userContent);
+
     const prompt = `
       역할: 너는 "Todak". 편안하고 따뜻하지만 상담사가 아닌 친구야.
 
       입력된 감정(사용자 선택): ${emotionLabels || '없음'}
-      일기 내용: ${userContent || '(비어 있음)'}
+      일기 내용: ${normalizedContent}
 
       규칙:
       - 일기 텍스트와 감정을 너 스스로 해석해, 주어진 단어를 끼워 넣지 말 것.
@@ -88,9 +102,9 @@ export const generateEmpathyMessage = async (emotionIds: EmotionId[], userConten
       },
     });
 
-    const text = typeof response.text === 'function' ? response.text() : response.text;
+    const text = extractText(response);
 
-    return text?.trim() || (await buildEmpathyFallback(emotionIds, userContent));
+    return text || (await buildEmpathyFallback(emotionIds, userContent));
   } catch (error) {
     console.error("AI Service Error:", error);
     // Fallback
@@ -99,26 +113,34 @@ export const generateEmpathyMessage = async (emotionIds: EmotionId[], userConten
 };
 
 /**
- * Generates media recommendations (Music, Video) based on mood.
+ * Generates media recommendations (Music, Video, Activity) based on mood and journal context.
  */
-export const generateMediaRecommendations = async (emotionLabels: string, userContent: string): Promise<{ music: { searchQuery: string, title: string, reason: string }, video: { searchQuery: string, title: string, reason: string } }> => {
+export const generateMediaRecommendations = async (emotionLabels: string, userContent: string): Promise<{
+  music: { searchQuery: string, title: string, reason: string },
+  video: { searchQuery: string, title: string, reason: string },
+  activity: { title: string, reason: string }
+}> => {
   try {
     if (!ai) {
       return {
         music: { searchQuery: "healing piano music", title: "잔잔한 피아노 음악", reason: "마음을 편안하게 해줄 거예요." },
-        video: { searchQuery: "nature sounds relaxing", title: "자연의 소리", reason: "잠시 숲속으로 떠나보세요." }
+        video: { searchQuery: "nature sounds relaxing", title: "자연의 소리", reason: "잠시 숲속으로 떠나보세요." },
+        activity: { title: "30분 산책하기", reason: "가볍게 걷다 보면 마음이 한결 가라앉을 거예요." }
       };
     }
+
+    const normalizedContent = normalizeJournalText(userContent);
 
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: `
         The user is feeling: "${emotionLabels}".
-        Journal content: "${userContent}".
+        Journal content: "${normalizedContent}".
 
         Recommend:
         1. ONE specific song available on Spotify that matches this mood.
         2. ONE specific YouTube video topic (e.g., ASMR, motivational speech, specific music playlist style) that helps.
+        3. ONE simple self-care activity (e.g., 30분 산책하기, 따뜻한 차 마시기) that matches their emotion and diary content.
 
         Output JSON format.
         Language: Korean.
@@ -146,19 +168,28 @@ export const generateMediaRecommendations = async (emotionLabels: string, userCo
               },
               required: ["searchQuery", "title", "reason"],
             },
+            activity: {
+              type: Type.OBJECT,
+              properties: {
+                title: { type: Type.STRING, description: "Short activity suggestion in Korean (e.g., 30분 산책하기)" },
+                reason: { type: Type.STRING, description: "One-sentence encouragement tied to the diary mood" },
+              },
+              required: ["title", "reason"],
+            },
           },
-          required: ["music", "video"],
+          required: ["music", "video", "activity"],
         },
       }
     });
 
-    const text = typeof response.text === 'function' ? response.text() : response.text;
+    const text = extractText(response);
     return JSON.parse(text as string);
   } catch (error) {
     console.error("AI Recommendation Error:", error);
     return {
       music: { searchQuery: "healing piano music", title: "잔잔한 피아노 음악", reason: "마음을 편안하게 해줄 거예요." },
-      video: { searchQuery: "nature sounds relaxing", title: "자연의 소리", reason: "잠시 숲속으로 떠나보세요." }
+      video: { searchQuery: "nature sounds relaxing", title: "자연의 소리", reason: "잠시 숲속으로 떠나보세요." },
+      activity: { title: "30분 산책하기", reason: "가볍게 걷다 보면 마음이 한결 가라앉을 거예요." }
     };
   }
 };
@@ -195,7 +226,7 @@ export const generateWeeklyReview = async (moods: MoodRecord[]): Promise<string>
             }
         });
 
-        const text = typeof response.text === 'function' ? response.text() : response.text;
+        const text = extractText(response);
         return text || "이번 주는 다양한 감정들이 함께했네요. 힘든 날도 있었지만, 행복한 순간들도 빛났던 한 주였습니다. 다음 주도 당신의 속도대로 나아가길 응원해요! 🌈";
     } catch (error) {
         console.error("AI Service Error:", error);
@@ -235,7 +266,7 @@ export const generateMonthlyReview = async (moods: MoodRecord[]): Promise<string
             }
         });
 
-        const text = typeof response.text === 'function' ? response.text() : response.text;
+        const text = extractText(response);
         return text || "한 달 동안 정말 수고 많았어요. 다양한 감정의 파도 속에서도 자신을 잃지 않고 기록해준 당신이 멋져요. 다음 달도 당신의 색으로 가득 채워지길! ✨";
     } catch (error) {
         console.error("AI Service Error:", error);

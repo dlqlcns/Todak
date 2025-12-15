@@ -4,7 +4,7 @@ import { EMOTIONS, AI_EMPATHY_MESSAGES } from './constants';
 import { generateEmpathyMessage, generateWeeklyReview, generateMonthlyReview, generateMediaRecommendations } from './services/aiService';
 import { Card, Button, BottomNav, Header, ModalWrapper } from './components/Components';
 import { CalendarModal } from './components/CalendarModal';
-import { login, signup, fetchMoods, saveMood, deleteMood, fetchReminder, saveReminder, checkIdAvailability } from './services/api';
+import { login, signup, fetchMoods, saveMood, deleteMood, fetchReminder, saveReminder, checkIdAvailability, fetchPeriodReview, savePeriodReview } from './services/api';
 import { 
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, 
   PieChart, Pie, LabelList
@@ -387,6 +387,7 @@ const HomeScreen: React.FC<{
 }> = ({ user, todayMood, onSaveMood, onLogout }) => {
   const [selectedEmos, setSelectedEmos] = useState<EmotionId[]>([]);
   const [text, setText] = useState('');
+  const [showTextWarning, setShowTextWarning] = useState(false);
   const [isLoadingAi, setIsLoadingAi] = useState(false);
 
   // Toggle emotion selection (max 3)
@@ -494,6 +495,11 @@ const HomeScreen: React.FC<{
 
   const handleSubmit = async () => {
     if (selectedEmos.length === 0) return;
+
+    if (!text.trim()) {
+        setShowTextWarning(true);
+        return;
+    }
     setIsLoadingAi(true);
     
     // 1. Generate real AI message
@@ -508,18 +514,24 @@ const HomeScreen: React.FC<{
     // Combine Recommendations
     const finalRecs: Recommendation[] = [
         {
-            id: 'gen-music', 
-            type: 'music', 
-            title: mediaRecs.music.title, 
-            desc: mediaRecs.music.reason, 
-            link: `https://open.spotify.com/search/${encodeURIComponent(mediaRecs.music.searchQuery)}` 
+            id: 'gen-music',
+            type: 'music',
+            title: mediaRecs.music.title,
+            desc: mediaRecs.music.reason,
+            link: `https://open.spotify.com/search/${encodeURIComponent(mediaRecs.music.searchQuery)}`
         },
-        { 
+        {
             id: 'gen-video',
             type: 'video',
             title: mediaRecs.video.title,
             desc: mediaRecs.video.reason,
             link: `https://www.youtube.com/results?search_query=${encodeURIComponent(mediaRecs.video.searchQuery)}`
+        },
+        {
+            id: 'gen-activity',
+            type: 'activity',
+            title: mediaRecs.activity.title,
+            desc: mediaRecs.activity.reason
         }
     ];
 
@@ -582,11 +594,19 @@ const HomeScreen: React.FC<{
                 <h3 className="text-lg font-bold text-warmbrown mb-4 pl-1">한 줄 기록</h3>
                 <textarea
                     value={text}
-                    onChange={(e) => setText(e.target.value)}
+                    onChange={(e) => {
+                        setText(e.target.value);
+                        if (showTextWarning && e.target.value.trim()) {
+                            setShowTextWarning(false);
+                        }
+                    }}
                     maxLength={200}
                     placeholder="오늘 어떤 일이 있었나요? 편하게 적어주세요."
-                    className="w-full h-40 p-6 bg-white rounded-[24px] border border-olivegray/20 focus:ring-2 focus:ring-olive focus:border-transparent resize-none mb-6 text-warmbrown placeholder:text-warmbrown/30 shadow-sm"
+                    className="w-full h-40 p-6 bg-white rounded-[24px] border border-olivegray/20 focus:ring-2 focus:ring-olive focus:border-transparent resize-none mb-2 text-warmbrown placeholder:text-warmbrown/30 shadow-sm"
                 />
+                {showTextWarning && !text.trim() && (
+                    <p className="text-softorange text-sm mb-4">한 줄 기록을 작성해주세요.</p>
+                )}
                 <Button fullWidth onClick={handleSubmit} disabled={selectedEmos.length === 0} className="py-5 text-lg shadow-xl shadow-olive/20">
                     기록 완료하기
                 </Button>
@@ -698,16 +718,19 @@ const CalendarScreen: React.FC<{
 };
 
 // 6. Report Screen
-const ReportScreen: React.FC<{ 
+type ReviewState = { content: string | null; lastMoodTimestamp: number; periodKey: string | null; periodStart: string | null; periodEnd: string | null };
+
+const ReportScreen: React.FC<{
+    userId: number;
     moods: Record<string, MoodRecord>;
-    weeklyReview: string | null;
-    monthlyReview: string | null;
-    onGenerateWeeklyReview: (review: string | null) => void;
-    onGenerateMonthlyReview: (review: string | null) => void;
+    weeklyReview: ReviewState;
+    monthlyReview: ReviewState;
+    onGenerateWeeklyReview: (review: ReviewState) => void;
+    onGenerateMonthlyReview: (review: ReviewState) => void;
     onDateClick: (date: string) => void;
     onLogout: () => void;
     onBack: () => void;
-}> = ({ moods, weeklyReview, monthlyReview, onGenerateWeeklyReview, onGenerateMonthlyReview, onDateClick, onLogout, onBack }) => {
+}> = ({ userId, moods, weeklyReview, monthlyReview, onGenerateWeeklyReview, onGenerateMonthlyReview, onDateClick, onLogout, onBack }) => {
     const [viewMode, setViewMode] = useState<'weekly' | 'monthly'>('weekly');
     const [baseDate, setBaseDate] = useState(new Date());
     const [isLoading, setIsLoading] = useState(false);
@@ -715,15 +738,10 @@ const ReportScreen: React.FC<{
     // --- Date Navigation ---
     const handlePrev = () => {
         setBaseDate(prev => viewMode === 'weekly' ? subWeeks(prev, 1) : subMonths(prev, 1));
-        // Reset review when changing period to force regeneration or clear state
-        if (viewMode === 'weekly') onGenerateWeeklyReview(null);
-        else onGenerateMonthlyReview(null);
     };
 
     const handleNext = () => {
         setBaseDate(prev => viewMode === 'weekly' ? addWeeks(prev, 1) : addMonths(prev, 1));
-        if (viewMode === 'weekly') onGenerateWeeklyReview(null);
-        else onGenerateMonthlyReview(null);
     };
 
     const periodLabel = viewMode === 'weekly' 
@@ -789,28 +807,84 @@ const ReportScreen: React.FC<{
     });
 
     const hasData = chartData.some(d => d.hasValue);
+    const periodKey = useMemo(() => viewMode === 'weekly'
+        ? format(startOfWeek(baseDate, { weekStartsOn: 0 }), 'yyyy-MM-dd')
+        : format(baseDate, 'yyyy-MM'), [viewMode, baseDate]);
+
+    const periodRange = useMemo(() => {
+        if (daysToShow.length === 0) {
+            return { start: '', end: '' };
+        }
+
+        return {
+            start: format(daysToShow[0], 'yyyy-MM-dd'),
+            end: format(daysToShow[daysToShow.length - 1], 'yyyy-MM-dd'),
+        };
+    }, [daysToShow]);
+
+    const recordsForPeriod = useMemo(() => (
+        daysToShow
+            .map(d => moods[format(d, 'yyyy-MM-dd')])
+            .filter(Boolean) as MoodRecord[]
+    ), [daysToShow, moods]);
+
+    const latestMoodTimestamp = useMemo(() => (
+        recordsForPeriod.reduce((max, record) => Math.max(max, record.timestamp || 0), 0)
+    ), [recordsForPeriod]);
 
     // --- AI Generation Logic ---
     useEffect(() => {
         const fetchReview = async () => {
-            const records = daysToShow.map(d => moods[format(d, 'yyyy-MM-dd')]).filter(Boolean);
-            const currentReview = viewMode === 'weekly' ? weeklyReview : monthlyReview;
+            if (!hasData) {
+                return;
+            }
 
-            // Only generate if we have data AND don't have a review for this session yet
-            if (hasData && !currentReview && !isLoading) {
-                setIsLoading(true);
-                if (viewMode === 'weekly') {
-                    const review = await generateWeeklyReview(records);
-                    onGenerateWeeklyReview(review);
-                } else {
-                    const review = await generateMonthlyReview(records);
-                    onGenerateMonthlyReview(review);
+            const currentReview = viewMode === 'weekly' ? weeklyReview : monthlyReview;
+            const setCurrentReview = viewMode === 'weekly' ? onGenerateWeeklyReview : onGenerateMonthlyReview;
+
+            if (
+                currentReview.content &&
+                currentReview.periodKey === periodKey &&
+                currentReview.lastMoodTimestamp >= latestMoodTimestamp
+            ) {
+                return;
+            }
+
+            setIsLoading(true);
+            try {
+                const existing = await fetchPeriodReview(userId, viewMode, periodKey, periodRange.start, periodRange.end);
+                if (existing && existing.lastMoodTimestamp >= latestMoodTimestamp) {
+                    setCurrentReview({
+                        content: existing.content,
+                        lastMoodTimestamp: existing.lastMoodTimestamp,
+                        periodKey: existing.periodKey,
+                        periodStart: existing.periodStart,
+                        periodEnd: existing.periodEnd,
+                    });
+                    return;
                 }
+
+                const review = viewMode === 'weekly'
+                    ? await generateWeeklyReview(recordsForPeriod)
+                    : await generateMonthlyReview(recordsForPeriod);
+
+                setCurrentReview({
+                    content: review,
+                    lastMoodTimestamp: latestMoodTimestamp,
+                    periodKey,
+                    periodStart: periodRange.start,
+                    periodEnd: periodRange.end,
+                });
+
+                await savePeriodReview(userId, viewMode, periodKey, review, latestMoodTimestamp, periodRange.start, periodRange.end);
+            } catch (err) {
+                console.error(err);
+            } finally {
                 setIsLoading(false);
             }
         };
         fetchReview();
-    }, [viewMode, hasData, daysToShow, weeklyReview, monthlyReview]); // Dependencies updated
+    }, [viewMode, hasData, periodKey, latestMoodTimestamp, recordsForPeriod, userId, weeklyReview, monthlyReview, periodRange]);
 
     const currentReview = viewMode === 'weekly' ? weeklyReview : monthlyReview;
     const reviewTitle = viewMode === 'weekly' ? "AI 주간 회고" : "AI 월간 회고";
@@ -822,29 +896,27 @@ const ReportScreen: React.FC<{
             <div className="px-6 space-y-6">
                 {/* View Mode Toggle */}
                 <div className="flex bg-white p-1 rounded-2xl shadow-sm border border-olivegray/10">
-                    <button 
+                    <button
                         onClick={() => {
                             setViewMode('weekly');
                             setBaseDate(new Date()); // Reset to today when switching mode for UX
-                            onGenerateWeeklyReview(null); // Clear previous logic
                         }}
                         className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all ${
-                            viewMode === 'weekly' 
-                            ? 'bg-olive text-white shadow-md' 
+                            viewMode === 'weekly'
+                            ? 'bg-olive text-white shadow-md'
                             : 'text-warmbrown/40 hover:bg-beige/50'
                         }`}
                     >
                         주간
                     </button>
-                    <button 
+                    <button
                          onClick={() => {
                              setViewMode('monthly');
                              setBaseDate(new Date());
-                             onGenerateMonthlyReview(null);
                          }}
                          className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all ${
-                            viewMode === 'monthly' 
-                            ? 'bg-olive text-white shadow-md' 
+                            viewMode === 'monthly'
+                            ? 'bg-olive text-white shadow-md'
                             : 'text-warmbrown/40 hover:bg-beige/50'
                         }`}
                     >
@@ -941,7 +1013,7 @@ const ReportScreen: React.FC<{
                         </div>
                     ) : (
                         <p className="text-warmbrown/80 leading-relaxed text-[15px] whitespace-pre-wrap relative z-10">
-                            {hasData ? (currentReview || "당신의 이야기가 궁금해요. 기록을 남겨주세요!") : "이 기간의 기록이 없어 편지를 쓸 수 없어요. ☁️"}
+                            {hasData ? (currentReview.content || "당신의 이야기가 궁금해요. 기록을 남겨주세요!") : "이 기간의 기록이 없어 편지를 쓸 수 없어요. ☁️"}
                         </p>
                     )}
                 </div>
@@ -1228,8 +1300,9 @@ const App: React.FC = () => {
   const [isNewSignup, setIsNewSignup] = useState(false);
   const [currentTab, setCurrentTab] = useState<ScreenName>('home');
   const [moods, setMoods] = useState<Record<string, MoodRecord>>({});
-  const [weeklyReview, setWeeklyReview] = useState<string | null>(null);
-  const [monthlyReview, setMonthlyReview] = useState<string | null>(null);
+  const emptyReviewState: ReviewState = { content: null, lastMoodTimestamp: 0, periodKey: null, periodStart: null, periodEnd: null };
+  const [weeklyReview, setWeeklyReview] = useState<ReviewState>(emptyReviewState);
+  const [monthlyReview, setMonthlyReview] = useState<ReviewState>(emptyReviewState);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [loadError, setLoadError] = useState('');
   
@@ -1292,10 +1365,8 @@ const App: React.FC = () => {
     if (!user) return;
     const saved = await saveMood(user.id, dateStr, emoIds, text, aiMsg, recs);
     setMoods(prev => ({ ...prev, [dateStr]: saved }));
-    if (isSameDay(new Date(dateStr), new Date())) {
-        setWeeklyReview(null);
-        setMonthlyReview(null);
-    }
+    setWeeklyReview({ ...emptyReviewState });
+    setMonthlyReview({ ...emptyReviewState });
   };
 
   const handleSaveTodayMood = async (emoIds: EmotionId[], text: string, aiMsg?: string, recs?: Recommendation[]) => {
@@ -1313,8 +1384,8 @@ const App: React.FC = () => {
           delete newMoods[dateStr];
           return newMoods;
       });
-      setWeeklyReview(null);
-      setMonthlyReview(null);
+      setWeeklyReview({ ...emptyReviewState });
+      setMonthlyReview({ ...emptyReviewState });
   };
 
   const handleLogout = () => {
@@ -1332,8 +1403,8 @@ const App: React.FC = () => {
       setUser(null);
       localStorage.removeItem('todak_current_user');
       setMoods({});
-      setWeeklyReview(null);
-      setMonthlyReview(null);
+      setWeeklyReview({ ...emptyReviewState });
+      setMonthlyReview({ ...emptyReviewState });
       setCurrentTab('home');
       setShowGuide(false);
       setIsNewSignup(false);
@@ -1384,9 +1455,10 @@ const App: React.FC = () => {
         return <CalendarScreen moods={moods} onDateClick={handleOpenModal} onLogout={handleLogout} onBack={handleBack} />;
       case 'report':
         return (
-            <ReportScreen 
-                moods={moods} 
-                weeklyReview={weeklyReview} 
+            <ReportScreen
+                userId={user.id}
+                moods={moods}
+                weeklyReview={weeklyReview}
                 monthlyReview={monthlyReview}
                 onGenerateWeeklyReview={setWeeklyReview}
                 onGenerateMonthlyReview={setMonthlyReview}

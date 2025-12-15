@@ -160,6 +160,153 @@ app.get('/api/check-id', async (req, res) => {
   }
 });
 
+app.get('/api/reviews', async (req, res) => {
+  const userId = Number(req.query.userId);
+  const periodType = String(req.query.periodType || '').trim();
+  const periodKey = String(req.query.periodKey || '').trim();
+  const periodStart = String(req.query.periodStart || '').trim();
+  const periodEnd = String(req.query.periodEnd || '').trim();
+
+  if (!userId || !periodType || !periodKey || !periodStart || !periodEnd) {
+    return res.status(400).send('userId, periodType, periodKey, periodStart, periodEnd가 필요합니다.');
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('user_reflections')
+      .select('content, period_start, period_end, type, ai_summary')
+      .eq('user_id', userId)
+      .eq('type', periodType)
+      .eq('period_start', periodStart)
+      .eq('period_end', periodEnd)
+      .maybeSingle();
+
+    if (error && error.code !== 'PGRST116' && error.code !== 'PGRST204') {
+      throw error;
+    }
+
+    if (!data) {
+      return res.json({ review: null });
+    }
+
+    let lastMoodTimestamp = 0;
+    if (data.ai_summary) {
+      try {
+        const parsed = JSON.parse(data.ai_summary);
+        if (parsed && typeof parsed.lastMoodTimestamp === 'number') {
+          lastMoodTimestamp = parsed.lastMoodTimestamp;
+        }
+      } catch (parseErr) {
+        console.warn('Failed to parse ai_summary for review', parseErr);
+      }
+    }
+
+    res.json({
+      review: {
+        content: data.content,
+        periodKey,
+        periodStart: data.period_start,
+        periodEnd: data.period_end,
+        lastMoodTimestamp,
+        periodType: data.type,
+      },
+    });
+  } catch (err) {
+    console.error('Fetch review error:', err);
+    res.status(500).send('회고 데이터를 불러오지 못했어요.');
+  }
+});
+
+app.post('/api/reviews', async (req, res) => {
+  const { userId, periodType, periodKey, content, lastMoodTimestamp, periodStart, periodEnd } = req.body || {};
+
+  if (!userId || !periodType || !periodKey || !content || !periodStart || !periodEnd) {
+    return res.status(400).send('userId, periodType, periodKey, periodStart, periodEnd, content가 필요합니다.');
+  }
+
+  try {
+    const now = new Date();
+    const summaryPayload = JSON.stringify({ lastMoodTimestamp: lastMoodTimestamp ?? 0 });
+
+    const { data: existing, error: existingError } = await supabase
+      .from('user_reflections')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('type', periodType)
+      .eq('period_start', periodStart)
+      .eq('period_end', periodEnd)
+      .maybeSingle();
+
+    if (existingError) {
+      throw existingError;
+    }
+
+    let review;
+    if (existing?.id) {
+      const { data, error } = await supabase
+        .from('user_reflections')
+        .update({
+          content,
+          period_start: periodStart,
+          period_end: periodEnd,
+          ai_summary: summaryPayload,
+          updated_at: now,
+        })
+        .eq('id', existing.id)
+        .select('content, period_start, period_end, type, ai_summary')
+        .single();
+
+      if (error) {
+        throw error;
+      }
+      review = data;
+    } else {
+      const { data, error } = await supabase
+        .from('user_reflections')
+        .insert({
+          user_id: userId,
+          type: periodType,
+          period_start: periodStart,
+          period_end: periodEnd,
+          content,
+          ai_summary: summaryPayload,
+          created_at: now,
+          updated_at: now,
+        })
+        .select('content, period_start, period_end, type, ai_summary')
+        .single();
+
+      if (error) {
+        throw error;
+      }
+      review = review || data;
+    }
+
+    let parsedSummary = { lastMoodTimestamp: 0 };
+    if (review?.ai_summary) {
+      try {
+        parsedSummary = JSON.parse(review.ai_summary) || parsedSummary;
+      } catch (parseErr) {
+        console.warn('Failed to parse ai_summary after save', parseErr);
+      }
+    }
+
+    res.json({
+      review: {
+        content: review.content,
+        periodKey,
+        periodStart: review.period_start,
+        periodEnd: review.period_end,
+        lastMoodTimestamp: parsedSummary.lastMoodTimestamp ?? 0,
+        periodType: review.type,
+      },
+    });
+  } catch (err) {
+    console.error('Save review error:', err);
+    res.status(500).send('회고 데이터를 저장하지 못했어요.');
+  }
+});
+
 app.get('/api/moods', async (req, res) => {
   const userId = Number(req.query.userId);
   if (!userId) {
