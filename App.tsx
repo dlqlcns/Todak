@@ -9,7 +9,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, 
   PieChart, Pie, LabelList
 } from 'recharts';
-import { ChevronDown, ChevronLeft, ChevronRight, Play, BookOpen, Music, LogOut, Loader2, Sparkles, CloudSun, Calendar as CalendarIcon, Check, ExternalLink } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, Play, BookOpen, Music, LogOut, Loader2, Sparkles, CloudSun, Calendar as CalendarIcon, Check, ExternalLink, Eye, EyeOff } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, subDays, startOfMonth, endOfMonth, getDay, addMonths, subMonths, addWeeks, subWeeks, getWeekOfMonth, differenceInCalendarDays } from 'date-fns';
 import { ko } from 'date-fns/locale';
 
@@ -23,17 +23,35 @@ const LoginScreen: React.FC<{ onLogin: (user: User, isNew: boolean) => void }> =
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [idCheckStatus, setIdCheckStatus] = useState<'idle' | 'checking' | 'available' | 'duplicate'>('idle');
   const [idCheckMessage, setIdCheckMessage] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
     setError('');
   };
 
+  const isValidId = (value: string) => value.trim().length >= 4;
+
+  const isValidPassword = (value: string) =>
+    /^(?=.*[A-Za-z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>/?`~]).{4,}$/.test(value);
+
   const handleSubmit = async () => {
     const { id, password, confirmPassword, nickname } = formData;
+    const trimmedId = id.trim();
 
-    if (!id || !password) {
+    if (!trimmedId || !password) {
         setError('아이디와 비밀번호를 모두 입력해주세요.');
+        return;
+    }
+
+    if (!isValidId(trimmedId)) {
+        setError('아이디는 4자 이상이어야 해요.');
+        return;
+    }
+
+    if (!isValidPassword(password)) {
+        setError('비밀번호는 4자 이상이며 영어, 숫자, 특수문자를 각각 포함해야 해요.');
         return;
     }
 
@@ -50,7 +68,7 @@ const LoginScreen: React.FC<{ onLogin: (user: User, isNew: boolean) => void }> =
     try {
         setIsSubmitting(true);
         if (view === 'login') {
-            const loggedIn = await login(id, password);
+            const loggedIn = await login(trimmedId, password);
             onLogin(loggedIn, false);
         } else {
             if (!nickname) {
@@ -61,7 +79,7 @@ const LoginScreen: React.FC<{ onLogin: (user: User, isNew: boolean) => void }> =
                 setError('비밀번호가 일치하지 않습니다.');
                 return;
             }
-            const newUser = await signup(id, password, nickname);
+            const newUser = await signup(trimmedId, password, nickname);
             onLogin(newUser, true);
         }
     } catch (e: any) {
@@ -198,27 +216,48 @@ const LoginScreen: React.FC<{ onLogin: (user: User, isNew: boolean) => void }> =
                 
                 <div className="space-y-2">
                     <label className="text-xs font-bold text-warmbrown/60 ml-1">비밀번호</label>
-                    <input
-                        name="password"
-                        type="password"
-                        placeholder="비밀번호를 입력해주세요"
-                        value={formData.password}
-                        onChange={handleChange}
-                        className="w-full bg-white/60 px-5 py-4 rounded-2xl text-warmbrown placeholder:text-warmbrown/30 focus:outline-none focus:ring-2 focus:ring-olive/50 transition-all border border-transparent focus:bg-white"
-                    />
+                    <div className="relative">
+                        <input
+                            name="password"
+                            type={showPassword ? 'text' : 'password'}
+                            placeholder="비밀번호를 입력해주세요"
+                            value={formData.password}
+                            onChange={handleChange}
+                            className="w-full bg-white/60 px-5 pr-12 py-4 rounded-2xl text-warmbrown placeholder:text-warmbrown/30 focus:outline-none focus:ring-2 focus:ring-olive/50 transition-all border border-transparent focus:bg-white"
+                        />
+                        <button
+                            type="button"
+                            onClick={() => setShowPassword(prev => !prev)}
+                            className="absolute inset-y-0 right-4 flex items-center text-warmbrown/40 hover:text-warmbrown/70"
+                            aria-label={showPassword ? '비밀번호 숨기기' : '비밀번호 보기'}
+                        >
+                            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
+                    </div>
+                    <p className="text-[11px] text-warmbrown/50 ml-1">영어, 숫자, 특수문자를 각각 포함하여 4자 이상으로 입력해주세요.</p>
                 </div>
 
             {isSignup && (
                 <div className="space-y-2 animate-[fadeIn_0.3s]">
                     <label className="text-xs font-bold text-warmbrown/60 ml-1">비밀번호 확인</label>
-                    <input
-                        name="confirmPassword"
-                        type="password"
-                        placeholder="비밀번호를 다시 입력해주세요"
-                        value={formData.confirmPassword}
-                        onChange={handleChange}
-                        className="w-full bg-white/60 px-5 py-4 rounded-2xl text-warmbrown placeholder:text-warmbrown/30 focus:outline-none focus:ring-2 focus:ring-olive/50 transition-all border border-transparent focus:bg-white"
-                    />
+                    <div className="relative">
+                        <input
+                            name="confirmPassword"
+                            type={showConfirmPassword ? 'text' : 'password'}
+                            placeholder="비밀번호를 다시 입력해주세요"
+                            value={formData.confirmPassword}
+                            onChange={handleChange}
+                            className="w-full bg-white/60 px-5 pr-12 py-4 rounded-2xl text-warmbrown placeholder:text-warmbrown/30 focus:outline-none focus:ring-2 focus:ring-olive/50 transition-all border border-transparent focus:bg-white"
+                        />
+                        <button
+                            type="button"
+                            onClick={() => setShowConfirmPassword(prev => !prev)}
+                            className="absolute inset-y-0 right-4 flex items-center text-warmbrown/40 hover:text-warmbrown/70"
+                            aria-label={showConfirmPassword ? '비밀번호 숨기기' : '비밀번호 보기'}
+                        >
+                            {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
+                    </div>
                     {formData.confirmPassword && formData.password !== formData.confirmPassword && (
                         <p className="text-softorange text-xs ml-1">비밀번호가 일치하지 않습니다.</p>
                     )}
