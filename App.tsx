@@ -340,7 +340,38 @@ const LoginScreen: React.FC<{ onLogin: (user: User, isNew: boolean) => void }> =
   );
 };
 
-// 2. Onboarding Slide (Splash Modal)
+// 2. Main Splash Screen (Initial Entry)
+const MainSplash: React.FC = () => {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-olive via-peach to-beige text-warmbrown flex items-center justify-center overflow-hidden relative">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.45),transparent_55%),radial-gradient(circle_at_80%_20%,rgba(255,255,255,0.35),transparent_45%),radial-gradient(circle_at_50%_80%,rgba(255,255,255,0.4),transparent_50%)]" aria-hidden></div>
+      <div className="absolute w-64 h-64 bg-white/30 rounded-full blur-3xl animate-[pulse_5s_ease-in-out_infinite]" style={{ top: '-40px', right: '-60px' }}></div>
+      <div className="absolute w-48 h-48 bg-softorange/30 rounded-full blur-3xl animate-[pulse_4s_0.5s_ease-in-out_infinite]" style={{ bottom: '-30px', left: '-40px' }}></div>
+
+      <div className="relative z-10 flex flex-col items-center text-center gap-6 px-8 animate-[fadeIn_0.6s_ease-out]">
+        <div className="w-28 h-28 rounded-[32px] bg-white/80 backdrop-blur shadow-[0_20px_50px_rgba(80,57,35,0.15)] flex items-center justify-center animate-[float_3s_ease-in-out_infinite]">
+          <span className="text-5xl drop-shadow-sm">🌱</span>
+        </div>
+        <div className="space-y-2">
+          <h1 className="text-4xl font-extrabold tracking-tight text-warmbrown drop-shadow-sm">마음, 토닥</h1>
+          <p className="text-lg text-warmbrown/80 leading-relaxed">
+            따뜻한 빛과 향기 속에서<br />
+            당신의 마음을 살포시 안아주는 공간
+          </p>
+        </div>
+        <div className="flex items-center gap-3 text-sm text-warmbrown/70">
+          <div className="flex items-center gap-2 bg-white/70 backdrop-blur px-4 py-2 rounded-full shadow-sm animate-[slideUp_0.7s_ease-out]">
+            <Sparkles size={16} className="text-olive" />
+            <span>오늘의 감정을 편안하게 기록해보세요</span>
+          </div>
+          <div className="w-2 h-2 bg-warmbrown/30 rounded-full animate-ping" aria-hidden></div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// 3. Onboarding Slide (Splash Modal)
 const OnboardingScreen: React.FC<{ name: string; onFinish: () => void }> = ({ name, onFinish }) => {
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -369,7 +400,7 @@ const OnboardingScreen: React.FC<{ name: string; onFinish: () => void }> = ({ na
   );
 };
 
-// 3. Service Guide Overlay (Coach Mark)
+// 4. Service Guide Overlay (Coach Mark)
 const ServiceGuideOverlay: React.FC<{ onDismiss: () => void }> = ({ onDismiss }) => {
     const [doNotShow, setDoNotShow] = useState(false);
 
@@ -1389,6 +1420,7 @@ const ProfileScreen: React.FC<{
 // --- Main App Component ---
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
+  const [showSplash, setShowSplash] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [isNewSignup, setIsNewSignup] = useState(false);
@@ -1407,6 +1439,8 @@ const App: React.FC = () => {
 
   // Restore User Session
   useEffect(() => {
+    const splashTimer = setTimeout(() => setShowSplash(false), 1800);
+
     const savedUser = localStorage.getItem('todak_current_user');
     if (savedUser) {
         setUser(JSON.parse(savedUser));
@@ -1414,6 +1448,7 @@ const App: React.FC = () => {
         setIsNewSignup(false);
         setShowGuide(false);
     }
+    return () => clearTimeout(splashTimer);
   }, []);
 
   useEffect(() => {
@@ -1516,6 +1551,10 @@ const App: React.FC = () => {
   const handleBack = () => {
     setCurrentTab('home');
   };
+
+  if (showSplash) {
+    return <MainSplash />;
+  }
 
   if (!user) return <LoginScreen onLogin={handleLogin} />;
 
