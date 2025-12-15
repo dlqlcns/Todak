@@ -28,11 +28,13 @@ const LoginScreen: React.FC<{ onLogin: (user: User, isNew: boolean) => void }> =
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
+  const isSignup = view === 'signup';
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name } = e.target;
     let { value } = e.target;
 
-    if (name === 'id') {
+    if (isSignup && name === 'id') {
         value = value.replace(/[^A-Za-z0-9]/g, '');
         const idWarning = value
             ? isValidId(value)
@@ -44,15 +46,21 @@ const LoginScreen: React.FC<{ onLogin: (user: User, isNew: boolean) => void }> =
             setIdCheckStatus('idle');
             setIdCheckMessage('');
         }
+    } else if (!isSignup && name === 'id') {
+        setIdError('');
+        setIdCheckStatus('idle');
+        setIdCheckMessage('');
     }
 
-    if (name === 'password') {
+    if (isSignup && name === 'password') {
         const pwdWarning = value
             ? isValidPassword(value)
                 ? ''
                 : '비밀번호는 4자 이상이며 영어, 숫자, 특수문자를 각각 포함해야 해요.'
             : '';
         setPasswordError(pwdWarning);
+    } else if (!isSignup && name === 'password') {
+        setPasswordError('');
     }
 
     setFormData({ ...formData, [name]: value });
@@ -73,14 +81,14 @@ const LoginScreen: React.FC<{ onLogin: (user: User, isNew: boolean) => void }> =
         return;
     }
 
-    if (!isValidId(trimmedId)) {
+    if (isSignup && !isValidId(trimmedId)) {
         const idWarning = '아이디는 4자 이상의 영어와 숫자로만 입력해주세요.';
         setIdError(idWarning);
         setError(idWarning);
         return;
     }
 
-    if (!isValidPassword(password)) {
+    if (isSignup && !isValidPassword(password)) {
         const pwdWarning = '비밀번호는 4자 이상이며 영어, 숫자, 특수문자를 각각 포함해야 해요.';
         setPasswordError(pwdWarning);
         setError(pwdWarning);
@@ -212,9 +220,6 @@ const LoginScreen: React.FC<{ onLogin: (user: User, isNew: boolean) => void }> =
       </div>
     );
   }
-
-  // Login or Signup Form View
-  const isSignup = view === 'signup';
 
   return (
     <div className="min-h-screen flex flex-col p-8 bg-beige justify-center items-center relative overflow-hidden">
