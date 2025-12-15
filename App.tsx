@@ -23,15 +23,43 @@ const LoginScreen: React.FC<{ onLogin: (user: User, isNew: boolean) => void }> =
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [idCheckStatus, setIdCheckStatus] = useState<'idle' | 'checking' | 'available' | 'duplicate'>('idle');
   const [idCheckMessage, setIdCheckMessage] = useState('');
+  const [idError, setIdError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name } = e.target;
+    let { value } = e.target;
+
+    if (name === 'id') {
+        value = value.replace(/[^A-Za-z0-9]/g, '');
+        const idWarning = value
+            ? isValidId(value)
+                ? ''
+                : '아이디는 4자 이상의 영어와 숫자로만 입력해주세요.'
+            : '';
+        setIdError(idWarning);
+        if (idWarning) {
+            setIdCheckStatus('idle');
+            setIdCheckMessage('');
+        }
+    }
+
+    if (name === 'password') {
+        const pwdWarning = value
+            ? isValidPassword(value)
+                ? ''
+                : '비밀번호는 4자 이상이며 영어, 숫자, 특수문자를 각각 포함해야 해요.'
+            : '';
+        setPasswordError(pwdWarning);
+    }
+
+    setFormData({ ...formData, [name]: value });
     setError('');
   };
 
-  const isValidId = (value: string) => value.trim().length >= 4;
+  const isValidId = (value: string) => /^[A-Za-z0-9]{4,}$/.test(value.trim());
 
   const isValidPassword = (value: string) =>
     /^(?=.*[A-Za-z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>/?`~]).{4,}$/.test(value);
@@ -46,12 +74,16 @@ const LoginScreen: React.FC<{ onLogin: (user: User, isNew: boolean) => void }> =
     }
 
     if (!isValidId(trimmedId)) {
-        setError('아이디는 4자 이상이어야 해요.');
+        const idWarning = '아이디는 4자 이상의 영어와 숫자로만 입력해주세요.';
+        setIdError(idWarning);
+        setError(idWarning);
         return;
     }
 
     if (!isValidPassword(password)) {
-        setError('비밀번호는 4자 이상이며 영어, 숫자, 특수문자를 각각 포함해야 해요.');
+        const pwdWarning = '비밀번호는 4자 이상이며 영어, 숫자, 특수문자를 각각 포함해야 해요.';
+        setPasswordError(pwdWarning);
+        setError(pwdWarning);
         return;
     }
 
@@ -110,7 +142,7 @@ const LoginScreen: React.FC<{ onLogin: (user: User, isNew: boolean) => void }> =
     }
 
     const trimmedId = formData.id.trim();
-    if (!trimmedId) {
+    if (!trimmedId || !isValidId(trimmedId)) {
         setIdCheckStatus('idle');
         setIdCheckMessage('');
         return;
@@ -141,6 +173,12 @@ const LoginScreen: React.FC<{ onLogin: (user: User, isNew: boolean) => void }> =
         clearTimeout(timer);
     };
   }, [formData.id, view]);
+
+  useEffect(() => {
+    setError('');
+    setIdError('');
+    setPasswordError('');
+  }, [view]);
 
   const Background = () => (
     <>
@@ -207,6 +245,9 @@ const LoginScreen: React.FC<{ onLogin: (user: User, isNew: boolean) => void }> =
                         onChange={handleChange}
                         className="w-full bg-white/60 px-5 py-4 rounded-2xl text-warmbrown placeholder:text-warmbrown/30 focus:outline-none focus:ring-2 focus:ring-olive/50 transition-all border border-transparent focus:bg-white"
                     />
+                    {formData.id && idError && (
+                        <p className="text-softorange text-xs ml-1">{idError}</p>
+                    )}
                     {isSignup && formData.id && idCheckStatus !== 'idle' && (
                         <p className={`text-xs ml-1 ${idCheckStatus === 'duplicate' ? 'text-softorange' : 'text-olive'}`}>
                             {idCheckMessage}
@@ -234,7 +275,12 @@ const LoginScreen: React.FC<{ onLogin: (user: User, isNew: boolean) => void }> =
                             {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                         </button>
                     </div>
-                    <p className="text-[11px] text-warmbrown/50 ml-1">영어, 숫자, 특수문자를 각각 포함하여 4자 이상으로 입력해주세요.</p>
+                    {formData.password && passwordError && (
+                        <p className="text-softorange text-xs ml-1">{passwordError}</p>
+                    )}
+                    {isSignup && !passwordError && (
+                        <p className="text-[11px] text-warmbrown/50 ml-1">영어, 숫자, 특수문자를 각각 포함하여 4자 이상으로 입력해주세요.</p>
+                    )}
                 </div>
 
             {isSignup && (
