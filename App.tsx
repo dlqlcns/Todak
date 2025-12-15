@@ -9,7 +9,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, 
   PieChart, Pie, LabelList
 } from 'recharts';
-import { ChevronDown, ChevronLeft, ChevronRight, Play, BookOpen, Music, LogOut, Loader2, Sparkles, CloudSun, Calendar as CalendarIcon, Check, ExternalLink } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, Play, BookOpen, Music, LogOut, Loader2, Sparkles, CloudSun, Calendar as CalendarIcon, Check, ExternalLink, Eye, EyeOff } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, subDays, startOfMonth, endOfMonth, getDay, addMonths, subMonths, addWeeks, subWeeks, getWeekOfMonth, differenceInCalendarDays } from 'date-fns';
 import { ko } from 'date-fns/locale';
 
@@ -23,17 +23,75 @@ const LoginScreen: React.FC<{ onLogin: (user: User, isNew: boolean) => void }> =
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [idCheckStatus, setIdCheckStatus] = useState<'idle' | 'checking' | 'available' | 'duplicate'>('idle');
   const [idCheckMessage, setIdCheckMessage] = useState('');
+  const [idError, setIdError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  const isSignup = view === 'signup';
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name } = e.target;
+    let { value } = e.target;
+
+    if (isSignup && name === 'id') {
+        value = value.replace(/[^A-Za-z0-9]/g, '');
+        const idWarning = value
+            ? isValidId(value)
+                ? ''
+                : '아이디는 4자 이상의 영어와 숫자로만 입력해주세요.'
+            : '';
+        setIdError(idWarning);
+        if (idWarning) {
+            setIdCheckStatus('idle');
+            setIdCheckMessage('');
+        }
+    } else if (!isSignup && name === 'id') {
+        setIdError('');
+        setIdCheckStatus('idle');
+        setIdCheckMessage('');
+    }
+
+    if (isSignup && name === 'password') {
+        const pwdWarning = value
+            ? isValidPassword(value)
+                ? ''
+                : '비밀번호는 4자 이상이며 영어, 숫자, 특수문자를 각각 포함해야 해요.'
+            : '';
+        setPasswordError(pwdWarning);
+    } else if (!isSignup && name === 'password') {
+        setPasswordError('');
+    }
+
+    setFormData({ ...formData, [name]: value });
     setError('');
   };
 
+  const isValidId = (value: string) => /^[A-Za-z0-9]{4,}$/.test(value.trim());
+
+  const isValidPassword = (value: string) =>
+    /^(?=.*[A-Za-z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>/?`~]).{4,}$/.test(value);
+
   const handleSubmit = async () => {
     const { id, password, confirmPassword, nickname } = formData;
+    const trimmedId = id.trim();
 
-    if (!id || !password) {
+    if (!trimmedId || !password) {
         setError('아이디와 비밀번호를 모두 입력해주세요.');
+        return;
+    }
+
+    if (isSignup && !isValidId(trimmedId)) {
+        const idWarning = '아이디는 4자 이상의 영어와 숫자로만 입력해주세요.';
+        setIdError(idWarning);
+        setError(idWarning);
+        return;
+    }
+
+    if (isSignup && !isValidPassword(password)) {
+        const pwdWarning = '비밀번호는 4자 이상이며 영어, 숫자, 특수문자를 각각 포함해야 해요.';
+        setPasswordError(pwdWarning);
+        setError(pwdWarning);
         return;
     }
 
@@ -50,7 +108,7 @@ const LoginScreen: React.FC<{ onLogin: (user: User, isNew: boolean) => void }> =
     try {
         setIsSubmitting(true);
         if (view === 'login') {
-            const loggedIn = await login(id, password);
+            const loggedIn = await login(trimmedId, password);
             onLogin(loggedIn, false);
         } else {
             if (!nickname) {
@@ -61,7 +119,7 @@ const LoginScreen: React.FC<{ onLogin: (user: User, isNew: boolean) => void }> =
                 setError('비밀번호가 일치하지 않습니다.');
                 return;
             }
-            const newUser = await signup(id, password, nickname);
+            const newUser = await signup(trimmedId, password, nickname);
             onLogin(newUser, true);
         }
     } catch (e: any) {
@@ -92,7 +150,7 @@ const LoginScreen: React.FC<{ onLogin: (user: User, isNew: boolean) => void }> =
     }
 
     const trimmedId = formData.id.trim();
-    if (!trimmedId) {
+    if (!trimmedId || !isValidId(trimmedId)) {
         setIdCheckStatus('idle');
         setIdCheckMessage('');
         return;
@@ -123,6 +181,12 @@ const LoginScreen: React.FC<{ onLogin: (user: User, isNew: boolean) => void }> =
         clearTimeout(timer);
     };
   }, [formData.id, view]);
+
+  useEffect(() => {
+    setError('');
+    setIdError('');
+    setPasswordError('');
+  }, [view]);
 
   const Background = () => (
     <>
@@ -157,9 +221,6 @@ const LoginScreen: React.FC<{ onLogin: (user: User, isNew: boolean) => void }> =
     );
   }
 
-  // Login or Signup Form View
-  const isSignup = view === 'signup';
-
   return (
     <div className="min-h-screen flex flex-col p-8 bg-beige justify-center items-center relative overflow-hidden">
         <Background />
@@ -189,6 +250,9 @@ const LoginScreen: React.FC<{ onLogin: (user: User, isNew: boolean) => void }> =
                         onChange={handleChange}
                         className="w-full bg-white/60 px-5 py-4 rounded-2xl text-warmbrown placeholder:text-warmbrown/30 focus:outline-none focus:ring-2 focus:ring-olive/50 transition-all border border-transparent focus:bg-white"
                     />
+                    {formData.id && idError && (
+                        <p className="text-softorange text-xs ml-1">{idError}</p>
+                    )}
                     {isSignup && formData.id && idCheckStatus !== 'idle' && (
                         <p className={`text-xs ml-1 ${idCheckStatus === 'duplicate' ? 'text-softorange' : 'text-olive'}`}>
                             {idCheckMessage}
@@ -198,27 +262,53 @@ const LoginScreen: React.FC<{ onLogin: (user: User, isNew: boolean) => void }> =
                 
                 <div className="space-y-2">
                     <label className="text-xs font-bold text-warmbrown/60 ml-1">비밀번호</label>
-                    <input
-                        name="password"
-                        type="password"
-                        placeholder="비밀번호를 입력해주세요"
-                        value={formData.password}
-                        onChange={handleChange}
-                        className="w-full bg-white/60 px-5 py-4 rounded-2xl text-warmbrown placeholder:text-warmbrown/30 focus:outline-none focus:ring-2 focus:ring-olive/50 transition-all border border-transparent focus:bg-white"
-                    />
+                    <div className="relative">
+                        <input
+                            name="password"
+                            type={showPassword ? 'text' : 'password'}
+                            placeholder="비밀번호를 입력해주세요"
+                            value={formData.password}
+                            onChange={handleChange}
+                            className="w-full bg-white/60 px-5 pr-12 py-4 rounded-2xl text-warmbrown placeholder:text-warmbrown/30 focus:outline-none focus:ring-2 focus:ring-olive/50 transition-all border border-transparent focus:bg-white"
+                        />
+                        <button
+                            type="button"
+                            onClick={() => setShowPassword(prev => !prev)}
+                            className="absolute inset-y-0 right-4 flex items-center text-warmbrown/40 hover:text-warmbrown/70"
+                            aria-label={showPassword ? '비밀번호 숨기기' : '비밀번호 보기'}
+                        >
+                            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
+                    </div>
+                    {formData.password && passwordError && (
+                        <p className="text-softorange text-xs ml-1">{passwordError}</p>
+                    )}
+                    {isSignup && !passwordError && (
+                        <p className="text-[11px] text-warmbrown/50 ml-1">영어, 숫자, 특수문자를 각각 포함하여 4자 이상으로 입력해주세요.</p>
+                    )}
                 </div>
 
             {isSignup && (
                 <div className="space-y-2 animate-[fadeIn_0.3s]">
                     <label className="text-xs font-bold text-warmbrown/60 ml-1">비밀번호 확인</label>
-                    <input
-                        name="confirmPassword"
-                        type="password"
-                        placeholder="비밀번호를 다시 입력해주세요"
-                        value={formData.confirmPassword}
-                        onChange={handleChange}
-                        className="w-full bg-white/60 px-5 py-4 rounded-2xl text-warmbrown placeholder:text-warmbrown/30 focus:outline-none focus:ring-2 focus:ring-olive/50 transition-all border border-transparent focus:bg-white"
-                    />
+                    <div className="relative">
+                        <input
+                            name="confirmPassword"
+                            type={showConfirmPassword ? 'text' : 'password'}
+                            placeholder="비밀번호를 다시 입력해주세요"
+                            value={formData.confirmPassword}
+                            onChange={handleChange}
+                            className="w-full bg-white/60 px-5 pr-12 py-4 rounded-2xl text-warmbrown placeholder:text-warmbrown/30 focus:outline-none focus:ring-2 focus:ring-olive/50 transition-all border border-transparent focus:bg-white"
+                        />
+                        <button
+                            type="button"
+                            onClick={() => setShowConfirmPassword(prev => !prev)}
+                            className="absolute inset-y-0 right-4 flex items-center text-warmbrown/40 hover:text-warmbrown/70"
+                            aria-label={showConfirmPassword ? '비밀번호 숨기기' : '비밀번호 보기'}
+                        >
+                            {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
+                    </div>
                     {formData.confirmPassword && formData.password !== formData.confirmPassword && (
                         <p className="text-softorange text-xs ml-1">비밀번호가 일치하지 않습니다.</p>
                     )}
