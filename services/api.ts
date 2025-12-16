@@ -105,3 +105,7 @@ export async function savePeriodReview(
   });
   return review;
 }
+
+export async function deleteAccount(userId: number): Promise<void> {
+  await request<void>(`/api/users/${userId}`, { method: 'DELETE' });
+}

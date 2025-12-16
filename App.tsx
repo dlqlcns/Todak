@@ -4,7 +4,7 @@ import { EMOTIONS, AI_EMPATHY_MESSAGES } from './constants';
 import { generateEmpathyMessage, generateWeeklyReview, generateMonthlyReview, generateMediaRecommendations } from './services/aiService';
 import { Card, Button, BottomNav, Header, ModalWrapper } from './components/Components';
 import { CalendarModal } from './components/CalendarModal';
-import { login, signup, fetchMoods, saveMood, deleteMood, fetchReminder, saveReminder, checkIdAvailability, fetchPeriodReview, savePeriodReview } from './services/api';
+import { login, signup, fetchMoods, saveMood, deleteMood, fetchReminder, saveReminder, checkIdAvailability, fetchPeriodReview, savePeriodReview, deleteAccount } from './services/api';
 import { 
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, 
   PieChart, Pie, LabelList
@@ -1528,17 +1528,20 @@ const App: React.FC = () => {
   const openDeleteModal = () => setIsDeleteModalOpen(true);
   const closeDeleteModal = () => setIsDeleteModalOpen(false);
 
-  const confirmDeleteAccount = () => {
-      setUser(null);
-      localStorage.removeItem('todak_current_user');
-      setMoods({});
-      setWeeklyReview({ ...emptyReviewState });
-      setMonthlyReview({ ...emptyReviewState });
-      setCurrentTab('home');
-      setShowGuide(false);
-      setIsNewSignup(false);
-      setIsDeleteModalOpen(false);
-      localStorage.removeItem('todak_guide_seen'); // Optional: Reset guide on account delete
+  const confirmDeleteAccount = async () => {
+      if (!user) return;
+      try {
+          await deleteAccount(user.id);
+          setMoods({});
+          setWeeklyReview({ ...emptyReviewState });
+          setMonthlyReview({ ...emptyReviewState });
+          localStorage.removeItem('todak_guide_seen'); // Optional: Reset guide on account delete
+          handleLogout();
+          setIsDeleteModalOpen(false);
+      } catch (err: any) {
+          console.error('Delete account failed:', err);
+          alert(err?.message || '계정 삭제 중 문제가 발생했어요.');
+      }
   }
 
   // Shared modal handler
