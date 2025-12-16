@@ -604,6 +604,71 @@ app.post('/api/reminder', async (req, res) => {
   }
 });
 
+app.delete('/api/users/:id', async (req, res) => {
+  const userId = Number(req.params.id);
+  if (!userId) {
+    return res.status(400).send('삭제할 사용자 id가 필요합니다.');
+  }
+
+  try {
+    const { data: moodRecords, error: moodRecordsError } = await supabase
+      .from('mood_records')
+      .select('id')
+      .eq('user_id', userId);
+
+    if (moodRecordsError) {
+      throw moodRecordsError;
+    }
+
+    const moodRecordIds = (moodRecords || []).map((record) => record.id);
+
+    if (moodRecordIds.length > 0) {
+      const { error: deleteEmotionsError } = await supabase
+        .from('mood_record_emotions')
+        .delete()
+        .in('mood_record_id', moodRecordIds);
+
+      if (deleteEmotionsError) {
+        throw deleteEmotionsError;
+      }
+
+      const { error: deleteRecsError } = await supabase
+        .from('mood_recommendations')
+        .delete()
+        .in('mood_record_id', moodRecordIds);
+
+      if (deleteRecsError) {
+        throw deleteRecsError;
+      }
+    }
+
+    const { error: deleteReflectionsError } = await supabase.from('user_reflections').delete().eq('user_id', userId);
+    if (deleteReflectionsError) {
+      throw deleteReflectionsError;
+    }
+
+    const { error: deleteRemindersError } = await supabase.from('user_reminders').delete().eq('user_id', userId);
+    if (deleteRemindersError) {
+      throw deleteRemindersError;
+    }
+
+    const { error: deleteMoodRecordsError } = await supabase.from('mood_records').delete().eq('user_id', userId);
+    if (deleteMoodRecordsError) {
+      throw deleteMoodRecordsError;
+    }
+
+    const { error: deleteUserError } = await supabase.from('users').delete().eq('id', userId);
+    if (deleteUserError) {
+      throw deleteUserError;
+    }
+
+    res.status(204).end();
+  } catch (err) {
+    console.error('Delete user error:', err);
+    res.status(500).send('회원 탈퇴 처리 중 오류가 발생했어요.');
+  }
+});
+
 app.get('/api/health', async (_req, res) => {
   try {
     const { error } = await supabase.from('users').select('id').limit(1);
